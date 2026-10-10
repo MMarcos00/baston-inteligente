@@ -1,0 +1,29 @@
+# IntelliJ / WebStorm
+.idea/
+*.iml
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Tests
+coverage/
+
+# Firebase
+.firebase/
+
+# Firmware secrets
+firmware/**/secrets.h
+
+# Archivos temporales
+*.log
+*.tmp
+# Credenciales y archivos privados
+.env
+.env.*
+!.env.example
+secrets.h

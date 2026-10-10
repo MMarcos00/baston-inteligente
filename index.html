@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0"
+    >
+
+    <meta
+            name="description"
+            content="Bastón Inteligente Mejorado - Monitor IoT"
+    >
+
+    <meta name="theme-color" content="#2563eb">
+
+    <link rel="icon" href="./newfondo.png" type="image/svg+xml">
+
+    <link
+            rel="manifest"
+            href="./manifest.json"
+    >
+
+    <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+            integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+            crossorigin=""
+    >
+
+    <link
+            rel="stylesheet"
+            href="./css/styles.css"
+    >
+
+    <script
+            src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""
+    ></script>
+
+    <title>Smart Cane</title>
+</head>
+
+<body>
+
+<div
+        id="offlineBanner"
+        class="offline-banner hidden"
+        role="status"
+>
+    Sin conexión a Internet. Algunas funciones pueden no estar disponibles.
+</div>
+
+<main id="app">
+
+    <!-- LOGIN -->
+    <section
+            id="loginScreen"
+            class="screen"
+            aria-labelledby="loginTitle"
+    >
+
+        <div class="login-card">
+
+            <div class="brand">
+                <div class="brand-icon">
+                    <img
+                            src="./newfondo.png"
+                            alt="Bastón Inteligente"
+                    >
+                </div>
+
+                <h1 id="loginTitle">
+                    Smart Cane
+                </h1>
+
+            </div>
+
+            <form id="loginForm">
+
+                <div class="form-group">
+
+                    <label for="email">
+                        Correo electrónico
+                    </label>
+
+                    <input
+                            id="email"
+                            name="email"
+                            type="email"
+                            autocomplete="username"
+                            required
+                            placeholder="correo@ejemplo.com"
+                    >
+
+                </div>
+
+                <div class="form-group">
+
+                    <label for="password">
+                        Contraseña
+                    </label>
+
+                    <div class="password-wrapper">
+
+                        <input
+                                id="password"
+                                name="password"
+                                type="password"
+                                autocomplete="current-password"
+                                required
+                                minlength="6"
+                                placeholder="Contraseña"
+                        >
+
+                        <button
+                                id="togglePassword"
+                                type="button"
+                                class="password-toggle"
+                                aria-label="Mostrar contraseña"
+                        >
+                            Mostrar
+                        </button>
+
+                    </div>
+
+                </div>
+
+                <div
+                        id="loginError"
+                        class="message error hidden"
+                        role="alert"
+                ></div>
+
+                <button
+                        id="loginButton"
+                        type="submit"
+                        class="primary-button full-width"
+                >
+                    Iniciar sesión
+                </button>
+
+            </form>
+
+            <p class="login-footer">
+                IOT
+            </p>
+
+        </div>
+
+    </section>
+
+
+    <!-- DASHBOARD -->
+    <section
+            id="dashboardScreen"
+            class="screen hidden"
+            aria-labelledby="dashboardTitle"
+    >
+
+        <header class="topbar">
+
+            <div>
+                <h1 id="dashboardTitle">
+                    Bastón Inteligente
+                </h1>
+
+                <span class="device-name">
+                    baston01
+                </span>
+            </div>
+
+            <button
+                    id="logoutButton"
+                    class="secondary-button"
+                    type="button"
+            >
+                Cerrar sesión
+            </button>
+
+        </header>
+
+
+        <div
+                id="simulatorPanel"
+                class="simulator-panel hidden"
+        >
+
+            <div>
+
+                <strong>
+                    🧪 Modo simulador
+                </strong>
+
+                <p>
+                    Los botones generan datos de prueba en Firebase.
+                </p>
+
+            </div>
+
+            <div class="simulator-actions">
+
+                <button
+                        id="simulateNormalButton"
+                        class="secondary-button"
+                        type="button"
+                >
+                    Estado normal
+                </button>
+
+                <button
+                        id="simulateObstacleButton"
+                        class="secondary-button"
+                        type="button"
+                >
+                    Obstáculo
+                </button>
+
+                <button
+                        id="simulateFallButton"
+                        class="danger-button"
+                        type="button"
+                >
+                    Simular caída
+                </button>
+
+                <button
+                        id="simulateSosButton"
+                        class="danger-button"
+                        type="button"
+                >
+                    Simular SOS
+                </button>
+
+                <button
+                        id="simulateGpsButton"
+                        class="secondary-button"
+                        type="button"
+                >
+                    📍 GPS sin señal
+                </button>
+
+            </div>
+
+        </div>
+
+
+        <div class="dashboard-container">
+
+            <!-- ESTADO -->
+            <section class="status-card card">
+
+                <div class="status-header">
+
+                    <div>
+
+                        <span class="section-label">
+                            Estado del dispositivo
+                        </span>
+
+                        <h2 id="connectionStatus">
+                            Sin conexión
+                        </h2>
+
+                    </div>
+
+                    <span
+                            id="connectionIndicator"
+                            class="status-indicator offline"
+                    >
+                        ●
+                    </span>
+
+                </div>
+
+                <p id="lastSeenText">
+                    Sin datos recientes
+                </p>
+
+            </section>
+
+
+            <!-- GPS -->
+            <section
+                    id="gpsWarning"
+                    class="gps-warning card hidden"
+            >
+
+                <strong>
+                    ⚠ GPS sin señal
+                </strong>
+
+                <p>
+                    El bastón no tiene una ubicación GPS válida.
+                </p>
+
+            </section>
+
+
+            <!-- MÉTRICAS -->
+            <section class="metrics-grid">
+
+                <article class="metric-card card">
+
+                    <span class="metric-icon">
+                        📏
+                    </span>
+
+                    <div>
+
+                        <span class="section-label">
+                            Obstáculo
+                        </span>
+
+                        <strong id="obstacleValue">
+                            --
+                        </strong>
+
+                        <span>
+                            cm
+                        </span>
+
+                    </div>
+
+                </article>
+
+
+                <article
+                        id="fallCard"
+                        class="metric-card card"
+                >
+
+                    <span class="metric-icon">
+                        🚨
+                    </span>
+
+                    <div>
+
+                        <span class="section-label">
+                            Caída
+                        </span>
+
+                        <strong id="fallValue">
+                            Sin detectar
+                        </strong>
+
+                    </div>
+
+                </article>
+
+            </section>
+
+
+            <!-- MAPA -->
+            <section class="card">
+
+                <div class="section-heading">
+
+                    <div>
+
+                        <span class="section-label">
+                            Ubicación
+                        </span>
+
+                        <h2>
+                            Última posición
+                        </h2>
+
+                    </div>
+
+                    <button
+                            id="centerMapButton"
+                            class="secondary-button"
+                            type="button"
+                    >
+                        Centrar
+                    </button>
+
+                </div>
+
+                <div
+                        id="map"
+                        class="map-container"
+                        aria-label="Mapa de ubicación del bastón"
+                ></div>
+
+                <p
+                        id="coordinatesText"
+                        class="coordinates"
+                >
+                    Ubicación no disponible
+                </p>
+
+            </section>
+
+
+            <!-- ALERTAS -->
+            <section class="card">
+
+                <div class="section-heading">
+
+                    <div>
+
+                        <span class="section-label">
+                            Seguridad
+                        </span>
+
+                        <h2>
+                            Alertas recientes
+                        </h2>
+
+                    </div>
+
+                </div>
+
+                <div
+                        id="alertsList"
+                        class="alerts-list"
+                >
+
+                    <div class="empty-state">
+                        No hay alertas recientes.
+                    </div>
+
+                </div>
+
+            </section>
+
+        </div>
+
+    </section>
+
+</main>
+
+
+<!-- Firebase + aplicación -->
+<script
+        type="module"
+        src="./src/main.js"
+></script>
+
+</body>
+</html>

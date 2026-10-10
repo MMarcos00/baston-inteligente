@@ -1,0 +1,105 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "devices": {
+      "baston01": {
+
+        "status": {
+          ".read": "auth != null",
+          ".write": "auth != null && auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33'",
+          ".validate": "newData.hasChildren(['lat', 'lng', 'gpsFix', 'obstacleCm', 'fallDetected', 'lastSeen'])",
+
+          "lat": {
+            ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+          },
+
+          "lng": {
+            ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+          },
+
+          "gpsFix": {
+            ".validate": "newData.isBoolean()"
+          },
+
+          "obstacleCm": {
+            ".validate": "newData.val() === null || (newData.isNumber() && newData.val() >= 0)"
+          },
+
+          "fallDetected": {
+            ".validate": "newData.isBoolean()"
+          },
+
+          "lastSeen": {
+            ".validate": "newData.isNumber()"
+          }
+        },
+
+        "history": {
+          ".read": "auth != null",
+
+          "$historyId": {
+            ".write": "auth != null && auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33' && !data.exists()",
+
+            ".validate": "newData.hasChildren(['lat', 'lng', 'ts'])",
+
+            "lat": {
+              ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+            },
+
+            "lng": {
+              ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+            },
+
+            "ts": {
+              ".validate": "newData.isNumber()"
+            }
+          },
+
+          ".indexOn": ["ts"]
+        },
+
+        "alerts": {
+          ".read": "auth != null",
+
+          "$alertId": {
+            ".write": "auth != null && ((auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33' && !data.exists()) || (auth.uid === 'ErQQJUH79XT65flAqwP11o5lycv2' && data.exists()))",
+
+            ".validate": "newData.hasChildren(['type', 'lat', 'lng', 'gpsFix', 'createdAt', 'attended'])",
+
+            "type": {
+              ".validate": "newData.isString() && (newData.val() === 'fall' || newData.val() === 'sos')"
+            },
+
+            "lat": {
+              ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+            },
+
+            "lng": {
+              ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+            },
+
+            "gpsFix": {
+              ".validate": "newData.isBoolean()"
+            },
+
+            "createdAt": {
+              ".validate": "newData.isNumber()"
+            },
+
+            "attended": {
+              ".validate": "newData.isBoolean()"
+            },
+
+            "attendedAt": {
+              ".validate": "newData.val() === null || newData.isNumber()"
+            }
+          },
+
+          ".indexOn": ["createdAt"]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,93 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Prueba GPS - Bastón Inteligente</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 30px auto;
+            padding: 20px;
+            background: #f3f6f8;
+            color: #222;
+        }
+
+        main {
+            background: white;
+            padding: 22px;
+            border-radius: 14px;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            margin: 8px 0;
+            border: 0;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        #start { background: #176b45; color: white; }
+        #stop { background: #ddd; color: #222; }
+        #result {
+            background: #edf3f7;
+            padding: 14px;
+            border-radius: 8px;
+            overflow-wrap: anywhere;
+        }
+    </style>
+</head>
+<body>
+<main>
+    <h2>📍 Prueba GPS</h2>
+    <p>Bastón Inteligente Mejorado</p>
+
+    <button id="start">Iniciar GPS</button>
+    <button id="stop">Detener GPS</button>
+
+    <h3>Resultado</h3>
+    <div id="result" aria-live="polite">
+        Esperando que inicies la prueba...
+    </div>
+</main>
+
+<script type="module">
+    import { PhoneLocationService }
+        from "./src/application/PhoneLocationService.js";
+
+    const gps = new PhoneLocationService();
+    const result = document.getElementById("result");
+
+    document.getElementById("start").addEventListener("click", () => {
+        result.textContent = "Solicitando ubicación...";
+
+        gps.start(
+            (location) => {
+                result.innerHTML = `
+                    <p><b>Estado:</b> GPS disponible</p>
+                    <p><b>Latitud:</b> ${location.lat}</p>
+                    <p><b>Longitud:</b> ${location.lng}</p>
+                    <p><b>Precisión estimada:</b>
+                       ${Math.round(location.accuracy)} metros</p>
+                    <p><a target="_blank" rel="noopener"
+                       href="https://maps.google.com/?q=${location.lat},${location.lng}">
+                       Ver ubicación en Google Maps</a></p>
+                `;
+            },
+            (message) => {
+                result.textContent = message;
+            }
+        );
+    });
+
+    document.getElementById("stop").addEventListener("click", () => {
+        gps.stop();
+        result.textContent = "Seguimiento GPS detenido.";
+    });
+</script>
+</body>
+</html>
