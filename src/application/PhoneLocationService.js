@@ -10,21 +10,17 @@ export class PhoneLocationService {
             return;
         }
 
-        if (this.watchId !== null) {
-            return;
-        }
+        if (this.watchId !== null) return;
 
         this.watchId = navigator.geolocation.watchPosition(
             (position) => {
-                const location = {
+                onLocation({
                     lat: position.coords.latitude,
                     lng: position.coords.longitude,
                     accuracy: position.coords.accuracy,
                     gpsFix: true,
                     timestamp: position.timestamp
-                };
-
-                onLocation(location);
+                });
             },
             (error) => {
                 const messages = {
@@ -33,7 +29,9 @@ export class PhoneLocationService {
                     3: "Se agotó el tiempo de espera del GPS."
                 };
 
-                onError(messages[error.code] || "Error de ubicación.");
+                onError(
+                    messages[error.code] || "Error de ubicación."
+                );
             },
             {
                 enableHighAccuracy: true,

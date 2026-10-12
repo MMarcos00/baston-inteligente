@@ -244,4 +244,49 @@ export class FirebaseDeviceRepository {
 
     }
 
+    async writePhoneLocation(location) {
+        const locationRef = ref(
+            this.database,
+            `${this.devicePath}/phoneLocation/current`
+        );
+
+        await set(locationRef, {
+            lat: location.lat,
+            lng: location.lng,
+            accuracy: location.accuracy,
+            gpsFix: location.gpsFix,
+            updatedAt: serverTimestamp()
+        });
+    }
+
+    async writePhoneLocationHistory(location) {
+        const historyRef = ref(
+            this.database,
+            `${this.devicePath}/phoneLocation/history`
+        );
+
+        const newRecord = push(historyRef);
+
+        await set(newRecord, {
+            lat: location.lat,
+            lng: location.lng,
+            accuracy: location.accuracy,
+            ts: serverTimestamp()
+        });
+    }
+
+    subscribeToPhoneLocation(callback, onError) {
+        const locationRef = ref(
+            this.database,
+            `${this.devicePath}/phoneLocation/current`
+        );
+
+        return onValue(
+            locationRef,
+            (snapshot) => callback(snapshot.val()),
+            onError
+        );
+    }
+
+
 }
