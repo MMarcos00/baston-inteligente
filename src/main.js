@@ -1,10 +1,8 @@
-const params =
-    new URLSearchParams(
-        window.location.search
-    );
+const params = new URLSearchParams(
+    window.location.search
+);
 
-const demoMode =
-    params.get("demo") === "1";
+const demoMode = params.get("demo") === "1";
 
 
 async function startApplication() {
@@ -39,7 +37,7 @@ async function startApplication() {
      * MODO NORMAL
      * ========================================
      *
-     * Aquí sí utilizamos Firebase.
+     * Aquí utilizamos Firebase.
      */
     try {
 
@@ -86,6 +84,12 @@ async function startApplication() {
             );
 
         const {
+            PhoneLocationService
+        } = await import(
+            "./application/PhoneLocationService.js"
+            );
+
+        const {
             LeafletMapAdapter
         } = await import(
             "./infrastructure/map/LeafletMapAdapter.js"
@@ -122,17 +126,22 @@ async function startApplication() {
             );
 
 
+        /*
+         * Inicializar Firebase
+         */
         const {
             auth,
             database
         } = FirebaseBootstrap.initialize();
 
 
+        /*
+         * Repositorios
+         */
         const authRepository =
             new FirebaseAuthRepository(
                 auth
             );
-
 
         const deviceRepository =
             new FirebaseDeviceRepository(
@@ -140,25 +149,24 @@ async function startApplication() {
             );
 
 
+        /*
+         * Servicios
+         */
         const authService =
             new AuthService(
                 authRepository
             );
-
 
         const deviceService =
             new DeviceService(
                 deviceRepository
             );
 
-
         const notificationService =
             new BrowserNotificationAdapter();
 
-
         const soundService =
             new SoundNotificationAdapter();
-
 
         const alertService =
             new AlertService(
@@ -167,29 +175,39 @@ async function startApplication() {
                 soundService
             );
 
-
         const simulatorService =
             new SimulatorService(
                 deviceRepository
             );
 
+        const phoneLocationService =
+            new PhoneLocationService();
 
+
+        /*
+         * Mapa
+         */
         const mapAdapter =
             new LeafletMapAdapter(
                 "map"
             );
 
 
+        /*
+         * Vistas
+         */
         const loginView =
             new LoginView(
                 authService
             );
 
-
         const dashboardView =
             new DashboardView();
 
 
+        /*
+         * Controlador principal
+         */
         const controller =
             new AppController({
 
@@ -209,11 +227,21 @@ async function startApplication() {
 
                 mapAdapter,
 
-                notificationService
+                notificationService,
+
+                phoneLocationService
+
             });
 
 
+        /*
+         * Iniciar aplicación
+         */
         controller.start();
+
+        console.log(
+            "Aplicación iniciada correctamente."
+        );
 
 
     } catch (error) {

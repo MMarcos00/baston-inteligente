@@ -1,3 +1,4 @@
+
 import {
     DeviceStatus,
     DeviceHistoryPoint
@@ -11,78 +12,61 @@ import {
 export class DeviceService {
 
     constructor(deviceRepository) {
-
-        this.deviceRepository =
-            deviceRepository;
-
+        this.deviceRepository = deviceRepository;
     }
-
 
     subscribeToStatus(callback, onError) {
-
-        return this.deviceRepository
-            .subscribeToStatus(
-                (data) => {
-
-                    const status =
-                        new DeviceStatus(data ?? {});
-
-                    callback(status);
-
-                },
-                onError
-            );
-
+        return this.deviceRepository.subscribeToStatus(
+            (data) => {
+                const status = new DeviceStatus(data ?? {});
+                callback(status);
+            },
+            onError
+        );
     }
-
 
     subscribeToHistory(callback, onError) {
+        return this.deviceRepository.subscribeToHistory(
+            (points) => {
+                const history = points.map(
+                    (point) => new DeviceHistoryPoint(point)
+                );
 
-        return this.deviceRepository
-            .subscribeToHistory(
-                (points) => {
-
-                    const history =
-                        points.map(
-                            (point) =>
-                                new DeviceHistoryPoint(
-                                    point
-                                )
-                        );
-
-                    callback(history);
-
-                },
-                onError
-            );
-
+                callback(history);
+            },
+            onError
+        );
     }
 
+    subscribeToPhoneLocation(callback, onError) {
+        return this.deviceRepository.subscribeToPhoneLocation(
+            callback,
+            onError
+        );
+    }
+
+    async writePhoneLocation(location) {
+        return this.deviceRepository.writePhoneLocation(location);
+    }
+
+    async writePhoneLocationHistory(location) {
+        return this.deviceRepository.writePhoneLocationHistory(location);
+    }
 
     isOnline(status) {
-
         if (!status?.lastSeen) {
             return false;
         }
 
         return (
-            Date.now() -
-            status.lastSeen
+            Date.now() - status.lastSeen
         ) < DEVICE_ONLINE_THRESHOLD_MS;
-
     }
 
-
     async getStatus() {
+        const data = await this.deviceRepository.getStatus();
 
-        const data =
-            await this.deviceRepository
-                .getStatus();
-
-        return new DeviceStatus(
-            data ?? {}
-        );
-
+        return new DeviceStatus(data ?? {});
     }
 
 }

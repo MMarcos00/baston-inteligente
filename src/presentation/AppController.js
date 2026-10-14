@@ -9,7 +9,8 @@ export class AppController {
                     loginView,
                     dashboardView,
                     mapAdapter,
-                    notificationService
+                    notificationService,
+                    phoneLocationService
                 }) {
 
         this.authService = authService;
@@ -21,11 +22,15 @@ export class AppController {
         this.dashboardView = dashboardView;
         this.mapAdapter = mapAdapter;
         this.notificationService = notificationService;
+        this.phoneLocationService = phoneLocationService;
 
         this.unsubscribers = [];
 
-        // Evita registrar los botones del simulador más de una vez
         this.simulatorBound = false;
+
+        // Control de ubicación del teléfono.
+        this.phoneLocationReceived = false;
+        this.lastPhoneHistoryAt = 0;
     }
 
 
@@ -33,62 +38,48 @@ export class AppController {
 
         this.bindViews();
 
-        this.loginView
-            .bindPasswordToggle();
+        this.loginView.bindPasswordToggle();
 
-        this.authService
-            .observeSession((user) => {
+        this.authService.observeSession((user) => {
 
-                if (user) {
+            if (user) {
+                this.showDashboard();
+            } else {
+                this.showLogin();
+            }
 
-                    this.showDashboard();
-
-                } else {
-
-                    this.showLogin();
-
-                }
-
-            });
+        });
     }
 
 
     bindViews() {
 
-        this.loginView
-            .bindLogin(
-                async (email, password) => {
+        this.loginView.bindLogin(
+            async (email, password) => {
 
-                    await this.authService
-                        .login(
-                            email,
-                            password
-                        );
+                await this.authService.login(
+                    email,
+                    password
+                );
 
-                }
-            );
+            }
+        );
 
+        this.dashboardView.bindLogout(
+            async () => {
 
-        this.dashboardView
-            .bindLogout(
-                async () => {
+                await this.authService.logout();
 
-                    await this.authService
-                        .logout();
+            }
+        );
 
-                }
-            );
+        this.dashboardView.bindCenterMap(
+            () => {
 
+                this.mapAdapter.centerOnLastLocation();
 
-        this.dashboardView
-            .bindCenterMap(
-                () => {
-
-                    this.mapAdapter
-                        .centerOnLastLocation();
-
-                }
-            );
+            }
+        );
     }
 
 
@@ -98,41 +89,93 @@ export class AppController {
 
         this.dashboardView.show();
 
-
         this.mapAdapter.initialize();
 
+        setTimeout(() => {
 
-        setTimeout(
-            () => {
+            this.mapAdapter.invalidateSize();
 
-                this.mapAdapter
-                    .invalidateSize();
+        }, 100);
 
-            },
-            100
-        );
-
-
-        await this.notificationService
-            .requestPermission();
-
+        await this.notificationService.requestPermission();
 
         this.startSubscriptions();
 
 
+        /*
+         * Activar el GPS del teléfono solamente
+         * cuando la URL contiene ?gps=1.
+         */
+        const gpsEnabled =
+            new URLSearchParams(
+                window.location.search
+            ).get("gps") === "1";
+
+        if (gpsEnabled && this.phoneLocationService) {
+
+            this.phoneLocationService.start(
+
+                async (location) => {
+
+                    try {
+
+                        // Guardar ubicación actual en Firebase.
+                        await this.deviceService.writePhoneLocation(
+                            location
+                        );
+
+                        // Guardar un punto del recorrido
+                        // cada 30 segundos como máximo.
+                        const now = Date.now();
+
+                        if (
+                            now - this.lastPhoneHistoryAt >= 30000
+                        ) {
+
+                            await this.deviceService.writePhoneLocationHistory(
+                                location
+                            );
+
+                            this.lastPhoneHistoryAt = now;
+                        }
+
+                    } catch (error) {
+
+                        console.error(
+                            "No se pudo guardar la ubicación del teléfono:",
+                            error
+                        );
+
+                    }
+
+                },
+
+                (message) => {
+
+                    console.error(
+                        "Error de GPS del teléfono:",
+                        message
+                    );
+
+                }
+
+            );
+
+        }
+
+
+        /*
+         * Activar el simulador solamente con ?sim=1.
+         */
         const simulatorEnabled =
             new URLSearchParams(
                 window.location.search
             ).get("sim") === "1";
 
-
         if (simulatorEnabled) {
 
-            this.dashboardView
-                .showSimulator();
+            this.dashboardView.showSimulator();
 
-
-            // Solo conectar los botones una vez
             if (!this.simulatorBound) {
 
                 this.bindSimulator();
@@ -150,6 +193,15 @@ export class AppController {
 
         this.stopSubscriptions();
 
+        // Detener seguimiento del teléfono al cerrar sesión.
+        if (this.phoneLocationService) {
+
+            this.phoneLocationService.stop();
+
+        }
+
+        this.phoneLocationReceived = false;
+
         this.dashboardView.hide();
 
         this.loginView.show();
@@ -162,117 +214,166 @@ export class AppController {
         this.stopSubscriptions();
 
 
+        /*
+         * Estado del bastón.
+         */
         const statusUnsubscribe =
-            this.deviceService
-                .subscribeToStatus(
+            this.deviceService.subscribeToStatus(
 
-                    (status) => {
+                (status) => {
 
-                        const online =
-                            this.deviceService
-                                .isOnline(
-                                    status
-                                );
+                    const online =
+                        this.deviceService.isOnline(status);
 
+                    this.dashboardView.updateStatus(
+                        status,
+                        online
+                    );
 
-                        this.dashboardView
-                            .updateStatus(
-                                status,
-                                online
-                            );
+                    /*
+                     * Mostrar la ubicación del bastón
+                     * si el teléfono no está proporcionando
+                     * una ubicación válida.
+                     */
+                    if (
+                        !this.phoneLocationReceived &&
+                        status &&
+                        status.hasLocation()
+                    ) {
 
-
-                        if (
-                            status &&
-                            status.hasLocation()
-                        ) {
-
-                            this.mapAdapter
-                                .updateLocation(
-                                    status.lat,
-                                    status.lng
-                                );
-
-                        }
-
-                    },
-
-                    (error) => {
-
-                        console.error(
-                            "Error de estado:",
-                            error
+                        this.mapAdapter.updateLocation(
+                            status.lat,
+                            status.lng
                         );
 
                     }
 
-                );
+                },
+
+                (error) => {
+
+                    console.error(
+                        "Error de estado:",
+                        error
+                    );
+
+                }
+
+            );
 
 
+        /*
+         * Historial de ubicaciones del bastón.
+         */
         const historyUnsubscribe =
-            this.deviceService
-                .subscribeToHistory(
+            this.deviceService.subscribeToHistory(
 
-                    (points) => {
+                (points) => {
 
-                        this.mapAdapter
-                            .updateTrajectory(
-                                points
-                            );
+                    this.mapAdapter.updateTrajectory(
+                        points
+                    );
 
-                    },
+                },
 
-                    (error) => {
+                (error) => {
 
-                        console.error(
-                            "Error de historial:",
-                            error
-                        );
+                    console.error(
+                        "Error de historial:",
+                        error
+                    );
 
-                    }
+                }
 
-                );
+            );
 
 
+        /*
+         * Alertas de caída y SOS.
+         */
         const alertsUnsubscribe =
-            this.alertService
-                .subscribeToAlerts(
+            this.alertService.subscribeToAlerts(
 
-                    (alerts) => {
+                (alerts) => {
 
-                        this.dashboardView
-                            .renderAlerts(
-                                alerts,
+                    this.dashboardView.renderAlerts(
+                        alerts,
 
-                                (id) =>
-                                    this.alertService
-                                        .markAsAttended(
-                                            id
-                                        )
+                        (id) =>
+                            this.alertService.markAsAttended(
+                                id
+                            )
 
-                            );
+                    );
 
-                    },
+                },
 
-                    (error) => {
+                (error) => {
 
-                        console.error(
-                            "Error de alertas:",
-                            error
-                        );
+                    console.error(
+                        "Error de alertas:",
+                        error
+                    );
+
+                }
+
+            );
+
+
+        /*
+         * Ubicación actual del teléfono desde Firebase.
+         */
+        const phoneLocationUnsubscribe =
+            this.deviceService.subscribeToPhoneLocation(
+
+                (location) => {
+
+                    if (
+                        !location ||
+                        location.gpsFix !== true ||
+                        !Number.isFinite(location.lat) ||
+                        !Number.isFinite(location.lng)
+                    ) {
+
+                        this.phoneLocationReceived = false;
+
+                        return;
 
                     }
 
-                );
+                    this.phoneLocationReceived = true;
+
+                    this.mapAdapter.updateLocation(
+                        location.lat,
+                        location.lng
+                    );
+
+                },
+
+                (error) => {
+
+                    console.error(
+                        "Error al recibir la ubicación del teléfono:",
+                        error
+                    );
+
+                }
+
+            );
 
 
+        /*
+         * Guardar las suscripciones para poder detenerlas.
+         */
         this.unsubscribers = [
 
             statusUnsubscribe,
 
             historyUnsubscribe,
 
-            alertsUnsubscribe
+            alertsUnsubscribe,
+
+            phoneLocationUnsubscribe
 
         ];
 
@@ -282,21 +383,16 @@ export class AppController {
     stopSubscriptions() {
 
         for (
-            const unsubscribe
-            of this.unsubscribers
+            const unsubscribe of this.unsubscribers
             ) {
 
-            if (
-                typeof unsubscribe ===
-                "function"
-            ) {
+            if (typeof unsubscribe === "function") {
 
                 unsubscribe();
 
             }
 
         }
-
 
         this.unsubscribers = [];
 
@@ -305,69 +401,54 @@ export class AppController {
 
     bindSimulator() {
 
-        this.dashboardView
-            .bindSimulator({
+        this.dashboardView.bindSimulator({
 
-                normal:
-                    async () => {
+            normal: async () => {
 
-                        await this.runSimulator(
-                            () =>
-                                this.simulatorService
-                                    .simulateNormal()
-                        );
+                await this.runSimulator(
+                    () =>
+                        this.simulatorService.simulateNormal()
+                );
 
-                    },
+            },
 
+            obstacle: async () => {
 
-                obstacle:
-                    async () => {
+                await this.runSimulator(
+                    () =>
+                        this.simulatorService.simulateObstacle()
+                );
 
-                        await this.runSimulator(
-                            () =>
-                                this.simulatorService
-                                    .simulateObstacle()
-                        );
+            },
 
-                    },
+            fall: async () => {
 
+                await this.runSimulator(
+                    () =>
+                        this.simulatorService.simulateFall()
+                );
 
-                fall:
-                    async () => {
+            },
 
-                        await this.runSimulator(
-                            () =>
-                                this.simulatorService
-                                    .simulateFall()
-                        );
+            sos: async () => {
 
-                    },
+                await this.runSimulator(
+                    () =>
+                        this.simulatorService.simulateSos()
+                );
 
+            },
 
-                sos:
-                    async () => {
+            gps: async () => {
 
-                        await this.runSimulator(
-                            () =>
-                                this.simulatorService
-                                    .simulateSos()
-                        );
+                await this.runSimulator(
+                    () =>
+                        this.simulatorService.simulateGpsWithoutSignal()
+                );
 
-                    },
+            }
 
-
-                gps:
-                    async () => {
-
-                        await this.runSimulator(
-                            () =>
-                                this.simulatorService
-                                    .simulateGpsWithoutSignal()
-                        );
-
-                    }
-
-            });
+        });
 
     }
 
