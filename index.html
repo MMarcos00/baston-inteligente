@@ -12,10 +12,10 @@
 
     <meta
             name="description"
-            content="Bastón Inteligente Mejorado - Monitor IoT"
+            content="SmartCane - Sistema inteligente de asistencia y monitoreo"
     >
 
-    <meta name="theme-color" content="#2563eb">
+    <meta name="theme-color" content="#101b36">
 
     <link
             rel="icon"
@@ -28,6 +28,7 @@
             href="./manifest.json"
     >
 
+    <!-- Leaflet: mapa GPS -->
     <link
             rel="stylesheet"
             href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -35,6 +36,7 @@
             crossorigin=""
     >
 
+    <!-- CSS original -->
     <link
             rel="stylesheet"
             href="./css/styles.css"
@@ -46,10 +48,761 @@
             crossorigin=""
     ></script>
 
-    <title>Smart Cane</title>
+    <title>SmartCane | Monitoreo inteligente</title>
+
+    <style>
+        /*
+         * ====================================
+         * DISEÑO PRINCIPAL SMARTCANE
+         * ====================================
+         */
+
+        :root {
+            --sc-navy: #101b36;
+            --sc-blue: #2563eb;
+            --sc-blue-dark: #1d4ed8;
+            --sc-bg: #f3f6fc;
+            --sc-white: #ffffff;
+            --sc-border: #e0e7f1;
+            --sc-text: #17233b;
+            --sc-muted: #64748b;
+            --sc-green: #15803d;
+            --sc-red: #dc2626;
+        }
+
+        [hidden],
+        .hidden {
+            display: none !important;
+        }
+
+        body {
+            margin: 0;
+        }
+
+        #dashboardScreen {
+            min-height: 100vh;
+            padding-bottom: 55px;
+            background: var(--sc-bg);
+            color: var(--sc-text);
+        }
+
+        #dashboardScreen * {
+            box-sizing: border-box;
+        }
+
+        #dashboardScreen button {
+            font-family: inherit;
+        }
+
+        #dashboardScreen button:focus-visible,
+        #dashboardScreen a:focus-visible {
+            outline: 3px solid #93c5fd;
+            outline-offset: 3px;
+        }
+
+        /*
+         * ====================================
+         * CABECERA
+         * ====================================
+         */
+
+        .sc-topbar {
+            padding: 22px max(
+                    20px,
+                    calc((100vw - 1200px) / 2)
+            );
+
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+
+            background: linear-gradient(
+                    125deg,
+                    #101b36,
+                    #1c3765
+            );
+
+            color: #ffffff;
+        }
+
+        .sc-brand {
+            display: flex;
+            align-items: center;
+            gap: 13px;
+            min-width: 0;
+        }
+
+        .sc-brand-logo {
+            width: 55px;
+            height: 55px;
+            flex: 0 0 55px;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            border-radius: 15px;
+            overflow: hidden;
+
+            background: rgba(
+                    255,
+                    255,
+                    255,
+                    0.13
+            );
+        }
+
+        .sc-brand-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .sc-brand h1 {
+            margin: 0 0 5px;
+            font-size: 25px;
+            color: #ffffff;
+        }
+
+        .sc-brand p {
+            margin: 0;
+            font-size: 13px;
+            color: #d3e0f5;
+        }
+
+        .sc-logout {
+            padding: 11px 15px !important;
+            border-radius: 11px !important;
+
+            background: rgba(
+                    255,
+                    255,
+                    255,
+                    0.12
+            ) !important;
+
+            color: #ffffff !important;
+
+            border: 1px solid rgba(
+                    255,
+                    255,
+                    255,
+                    0.25
+            ) !important;
+
+            white-space: nowrap;
+        }
+
+        /*
+         * ====================================
+         * CONTENEDOR
+         * ====================================
+         */
+
+        .sc-shell {
+            width: min(
+                    1200px,
+                    calc(100% - 32px)
+            );
+
+            margin: 25px auto;
+        }
+
+        .sc-intro {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 22px;
+        }
+
+        .sc-intro h2 {
+            margin: 0 0 8px;
+
+            font-size: clamp(
+                    23px,
+                    3vw,
+                    32px
+            );
+
+            color: var(--sc-navy);
+        }
+
+        .sc-intro p {
+            margin: 0;
+            font-size: 14px;
+            color: var(--sc-muted);
+        }
+
+        .sc-role-pill {
+            padding: 10px 15px;
+            border-radius: 999px;
+
+            background: #dbeafe;
+            color: #1d4ed8;
+
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        /*
+         * ====================================
+         * PESTAÑAS DEL CUIDADOR
+         * ====================================
+         */
+
+        .sc-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 9px;
+
+            margin-bottom: 23px;
+            padding: 9px;
+
+            border-radius: 17px;
+            border: 1px solid var(--sc-border);
+            background: #ffffff;
+
+            box-shadow: 0 4px 18px rgba(
+                    16,
+                    27,
+                    54,
+                    0.05
+            );
+        }
+
+        .sc-tab {
+            flex: 1 1 auto;
+
+            padding: 13px 14px;
+
+            border: none;
+            border-radius: 11px;
+
+            background: transparent;
+            color: #5b6b83;
+
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .sc-tab:hover {
+            background: #eff6ff;
+        }
+
+        .sc-tab[aria-selected="true"] {
+            background: var(--sc-blue);
+            color: #ffffff;
+        }
+
+        /*
+         * Solo una pestaña visible.
+         *
+         * DashboardView.js administra
+         * la clase sc-active.
+         */
+        .sc-tab-panel {
+            display: none;
+        }
+
+        .sc-tab-panel.sc-active {
+            display: block;
+        }
+
+        /*
+         * ====================================
+         * TARJETAS
+         * ====================================
+         */
+
+        .sc-card {
+            padding: 23px;
+
+            border-radius: 18px;
+            border: 1px solid var(--sc-border);
+
+            background: #ffffff;
+
+            box-shadow: 0 4px 20px rgba(
+                    16,
+                    27,
+                    54,
+                    0.045
+            );
+        }
+
+        .sc-card h2,
+        .sc-card h3 {
+            color: var(--sc-navy);
+        }
+
+        .sc-card-title {
+            margin: 0 0 15px;
+            font-size: 19px;
+        }
+
+        .sc-stack {
+            display: grid;
+            gap: 18px;
+        }
+
+        .sc-grid {
+            display: grid;
+            grid-template-columns: repeat(
+                3,
+                minmax(0, 1fr)
+            );
+            gap: 16px;
+        }
+
+        .sc-grid-two {
+            display: grid;
+            grid-template-columns: repeat(
+                2,
+                minmax(0, 1fr)
+            );
+            gap: 16px;
+        }
+
+        .sc-section-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            gap: 15px;
+            flex-wrap: wrap;
+
+            margin-bottom: 17px;
+        }
+
+        .sc-section-heading h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .sc-section-heading p {
+            margin: 6px 0 0;
+            font-size: 13px;
+            color: var(--sc-muted);
+        }
+
+        /*
+         * ====================================
+         * TARJETAS DE ESTADO
+         * ====================================
+         */
+
+        .sc-stat {
+            padding: 21px;
+
+            border-radius: 16px;
+            border: 1px solid var(--sc-border);
+
+            background: #ffffff;
+        }
+
+        .sc-blue {
+            border-top: 4px solid #2563eb;
+        }
+
+        .sc-green {
+            border-top: 4px solid #22c55e;
+        }
+
+        .sc-red {
+            border-top: 4px solid #ef4444;
+        }
+
+        .sc-stat-icon {
+            margin-bottom: 11px;
+            font-size: 25px;
+        }
+
+        .sc-stat-label {
+            display: block;
+            margin-bottom: 8px;
+
+            font-size: 13px;
+            color: var(--sc-muted);
+        }
+
+        .sc-stat-value {
+            display: block;
+
+            font-size: 23px;
+            font-weight: 800;
+            color: var(--sc-navy);
+
+            overflow-wrap: anywhere;
+        }
+
+        .sc-stat-description {
+            display: block;
+            margin-top: 8px;
+
+            font-size: 12px;
+            color: var(--sc-muted);
+        }
+
+        /*
+         * ====================================
+         * CONEXIÓN
+         * ====================================
+         */
+
+        .sc-device-status {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        #connectionStatus {
+            margin: 10px 0 9px;
+            font-size: clamp(
+                    18px,
+                    2vw,
+                    25px
+            );
+            overflow-wrap: anywhere;
+        }
+
+        #lastSeenText {
+            margin: 0;
+            color: var(--sc-muted);
+            font-size: 13px;
+        }
+
+        #connectionIndicator {
+            font-size: 25px;
+        }
+
+        #connectionIndicator.online {
+            color: var(--sc-green);
+        }
+
+        #connectionIndicator.offline {
+            color: var(--sc-red);
+        }
+
+        /*
+         * ====================================
+         * GPS
+         * ====================================
+         */
+
+        #gpsWarning {
+            padding: 17px;
+
+            border-radius: 14px;
+            border: 1px solid #facc15;
+
+            background: #fefce8;
+            color: #854d0e;
+        }
+
+        #gpsWarning p {
+            margin: 8px 0 0;
+            font-size: 13px;
+        }
+
+        #map {
+            width: 100%;
+            height: 460px;
+            min-height: 350px;
+
+            border: 1px solid #dbe4f0;
+            border-radius: 15px;
+
+            overflow: hidden;
+            z-index: 0;
+        }
+
+        #coordinatesText {
+            padding: 14px;
+            margin-top: 15px;
+
+            border-radius: 11px;
+
+            background: #f3f6fc;
+            color: #475569;
+
+            font-size: 13px;
+            overflow-wrap: anywhere;
+        }
+
+        /*
+         * ====================================
+         * CAÍDAS
+         * ====================================
+         */
+
+        .sc-metric {
+            padding: 21px;
+
+            border: 1px solid var(--sc-border);
+            border-radius: 16px;
+
+            background: #ffffff;
+        }
+
+        .sc-metric strong {
+            font-size: 19px;
+            color: var(--sc-navy);
+        }
+
+        .sc-metric.fall-alert {
+            border-color: #fda4af;
+            background: #fff1f2;
+        }
+
+        .sc-metric.fall-alert strong {
+            color: #b91c1c;
+        }
+
+        /*
+         * ====================================
+         * ALERTAS E HISTORIAL
+         * ====================================
+         */
+
+        .sc-counter {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+
+            min-width: 28px;
+            padding: 4px 9px;
+
+            border-radius: 999px;
+
+            background: #fee2e2;
+            color: #b91c1c;
+
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .sc-alert-list {
+            display: grid;
+            gap: 14px;
+        }
+
+        .sc-alert-list .alert-item {
+            padding: 19px;
+
+            border: 1px solid var(--sc-border);
+            border-radius: 13px;
+
+            background: #ffffff;
+        }
+
+        .sc-alert-list .alert-item.unattended {
+            border-left: 5px solid #ef4444;
+        }
+
+        .sc-alert-list .alert-item.attended {
+            border-left: 5px solid #22c55e;
+            background: #f8fafc;
+        }
+
+        .sc-alert-list .alert-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            gap: 12px;
+            flex-wrap: wrap;
+
+            margin-bottom: 13px;
+        }
+
+        .sc-alert-list .alert-type {
+            font-weight: 800;
+            color: var(--sc-navy);
+        }
+
+        .sc-alert-list .alert-time {
+            color: var(--sc-muted);
+            font-size: 12px;
+        }
+
+        .sc-alert-list .alert-location {
+            display: inline-block;
+            margin: 8px 0 12px;
+
+            color: var(--sc-blue);
+            font-weight: 700;
+        }
+
+        .sc-alert-list .attended-label {
+            display: inline-block;
+
+            padding: 8px 11px;
+            border-radius: 9px;
+
+            background: #dcfce7;
+            color: #166534;
+
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .sc-empty {
+            padding: 28px 15px;
+
+            text-align: center;
+
+            border: 1px dashed #cbd5e1;
+            border-radius: 13px;
+
+            background: #f8fafc;
+            color: var(--sc-muted);
+        }
+
+        /*
+         * ====================================
+         * USUARIO BASTÓN
+         * ====================================
+         */
+
+        .sc-device-hero {
+            margin-bottom: 20px;
+            padding: 29px;
+
+            border-radius: 22px;
+
+            background: linear-gradient(
+                    135deg,
+                    #17274b,
+                    #254a89
+            );
+
+            color: #ffffff;
+        }
+
+        .sc-device-hero h2 {
+            margin: 0 0 10px;
+
+            font-size: 28px;
+            color: #ffffff;
+        }
+
+        .sc-device-hero p {
+            margin: 0;
+            color: #dbeafe;
+
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .sc-device-note {
+            margin-top: 13px;
+
+            font-size: 13px;
+            line-height: 1.7;
+
+            color: #64748b;
+        }
+
+        /*
+         * ====================================
+         * ADAPTACIÓN A TELÉFONOS
+         * ====================================
+         */
+
+        @media (max-width: 850px) {
+
+            .sc-grid {
+                grid-template-columns: repeat(
+                    2,
+                    minmax(0, 1fr)
+                );
+            }
+
+            .sc-grid-two {
+                grid-template-columns: 1fr;
+            }
+
+            .sc-topbar {
+                padding: 19px;
+            }
+
+        }
+
+        @media (max-width: 560px) {
+
+            .sc-shell {
+                width: calc(100% - 26px);
+                margin: 17px auto;
+            }
+
+            .sc-topbar {
+                align-items: flex-start;
+            }
+
+            .sc-brand-logo {
+                width: 43px;
+                height: 43px;
+                flex-basis: 43px;
+            }
+
+            .sc-brand h1 {
+                font-size: 19px;
+            }
+
+            .sc-brand p {
+                font-size: 11px;
+            }
+
+            .sc-logout {
+                padding: 10px !important;
+                font-size: 12px !important;
+            }
+
+            .sc-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .sc-tabs {
+                display: grid;
+
+                grid-template-columns: repeat(
+                    2,
+                    minmax(0, 1fr)
+                );
+            }
+
+            .sc-tab {
+                padding: 12px 8px;
+                font-size: 13px;
+            }
+
+            .sc-card {
+                padding: 17px;
+            }
+
+            .sc-device-hero {
+                padding: 22px;
+            }
+
+            #map {
+                height: 350px;
+            }
+
+        }
+    </style>
+
 </head>
 
+
 <body>
+
+<!-- ======================================
+     AVISO SIN INTERNET
+======================================= -->
 
 <div
         id="offlineBanner"
@@ -60,11 +813,12 @@
     Algunas funciones pueden no estar disponibles.
 </div>
 
+
 <main id="app">
 
-    <!-- ===================================== -->
-    <!-- LOGIN -->
-    <!-- ===================================== -->
+    <!-- ======================================
+         PANTALLA DE LOGIN
+    ======================================= -->
 
     <section
             id="loginScreen"
@@ -77,17 +831,20 @@
             <div class="brand">
 
                 <div class="brand-icon">
+
                     <img
                             src="./newfondo.png"
-                            alt="Bastón Inteligente"
+                            alt="SmartCane"
                     >
+
                 </div>
 
                 <h1 id="loginTitle">
-                    Smart Cane
+                    SmartCane
                 </h1>
 
             </div>
+
 
             <form id="loginForm">
 
@@ -102,11 +859,12 @@
                             name="email"
                             type="email"
                             autocomplete="username"
-                            required
                             placeholder="correo@ejemplo.com"
+                            required
                     >
 
                 </div>
+
 
                 <div class="form-group">
 
@@ -121,15 +879,15 @@
                                 name="password"
                                 type="password"
                                 autocomplete="current-password"
-                                required
-                                minlength="6"
                                 placeholder="Contraseña"
+                                minlength="6"
+                                required
                         >
 
                         <button
                                 id="togglePassword"
-                                type="button"
                                 class="password-toggle"
+                                type="button"
                                 aria-label="Mostrar contraseña"
                         >
                             Mostrar
@@ -139,24 +897,27 @@
 
                 </div>
 
+
                 <div
                         id="loginError"
                         class="message error hidden"
                         role="alert"
                 ></div>
 
+
                 <button
                         id="loginButton"
-                        type="submit"
                         class="primary-button full-width"
+                        type="submit"
                 >
                     Iniciar sesión
                 </button>
 
             </form>
 
+
             <p class="login-footer">
-                IOT
+                Bastón Inteligente Mejorado
             </p>
 
         </div>
@@ -164,9 +925,9 @@
     </section>
 
 
-    <!-- ===================================== -->
-    <!-- DASHBOARD -->
-    <!-- ===================================== -->
+    <!-- ======================================
+         DASHBOARD GENERAL
+    ======================================= -->
 
     <section
             id="dashboardScreen"
@@ -174,23 +935,39 @@
             aria-labelledby="dashboardTitle"
     >
 
-        <header class="topbar">
+        <!-- CABECERA -->
 
-            <div>
+        <header class="sc-topbar">
 
-                <h1 id="dashboardTitle">
-                    Bastón Inteligente
-                </h1>
+            <div class="sc-brand">
 
-                <span class="device-name">
-                    baston01
-                </span>
+                <div class="sc-brand-logo">
+
+                    <img
+                            src="./newfondo.png"
+                            alt="Logotipo SmartCane"
+                    >
+
+                </div>
+
+                <div>
+
+                    <h1 id="dashboardTitle">
+                        SmartCane
+                    </h1>
+
+                    <p>
+                        Sistema inteligente de asistencia
+                    </p>
+
+                </div>
 
             </div>
 
+
             <button
                     id="logoutButton"
-                    class="secondary-button"
+                    class="secondary-button sc-logout"
                     type="button"
             >
                 Cerrar sesión
@@ -199,19 +976,20 @@
         </header>
 
 
-        <!-- ================================= -->
-        <!-- SIMULADOR -->
-        <!-- ================================= -->
+        <!-- ===================================
+             SIMULADOR
+             Conservado para pruebas.
+        ==================================== -->
 
         <div
                 id="simulatorPanel"
-                class="simulator-panel hidden"
+                class="simulator-panel hidden sc-shell"
         >
 
             <div>
 
                 <strong>
-                    🧪 Modo simulador
+                    Modo simulador
                 </strong>
 
                 <p>
@@ -220,6 +998,7 @@
                 </p>
 
             </div>
+
 
             <div class="simulator-actions">
 
@@ -260,7 +1039,7 @@
                         class="secondary-button"
                         type="button"
                 >
-                    📍 GPS sin señal
+                    GPS sin señal
                 </button>
 
             </div>
@@ -268,282 +1047,710 @@
         </div>
 
 
-        <div class="dashboard-container">
+        <div class="sc-shell">
 
-            <!-- ================================= -->
-            <!-- ESTADO DEL DISPOSITIVO -->
-            <!-- ================================= -->
+            <!-- ===================================
+                 INTRODUCCIÓN CUIDADOR
+            ==================================== -->
 
-            <section class="status-card card">
+            <div
+                    id="caregiverIntro"
+                    hidden
+            >
 
-                <div class="status-header">
+                <div class="sc-intro">
 
                     <div>
 
-                        <span class="section-label">
-                            Estado del dispositivo
-                        </span>
-
-                        <h2 id="connectionStatus">
-                            Sin datos recientes
+                        <h2>
+                            Centro de monitoreo
                         </h2>
 
+                        <p>
+                            Ubicación, emergencias
+                            e historial del bastón.
+                        </p>
+
                     </div>
+
+                    <span class="sc-role-pill">
+                        Cuidador
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <!-- ===================================
+                 INTRODUCCIÓN BASTÓN
+            ==================================== -->
+
+            <div id="deviceIntro">
+
+                <div class="sc-device-hero">
+
+                    <h2>
+                        Mi SmartCane
+                    </h2>
+
+                    <p>
+                        Tu bastón inteligente puede
+                        detectar obstáculos y enviar
+                        una emergencia mediante su
+                        botón físico SOS.
+                    </p>
+
+                    <p style="margin-top: 10px;">
+                        Comparte la ubicación del
+                        teléfono para que el cuidador
+                        pueda localizarte.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <!-- ===================================
+                 PESTAÑAS DEL CUIDADOR
+            ==================================== -->
+
+            <nav
+                    id="caregiverNavigation"
+                    class="sc-tabs"
+                    aria-label="Navegación del cuidador"
+                    hidden
+            >
+
+                <button
+                        class="sc-tab"
+                        type="button"
+                        data-sc-tab="inicio"
+                        aria-selected="true"
+                >
+                    Inicio
+                </button>
+
+                <button
+                        class="sc-tab"
+                        type="button"
+                        data-sc-tab="mapa"
+                        aria-selected="false"
+                >
+                    Ubicación
+                </button>
+
+                <button
+                        class="sc-tab"
+                        type="button"
+                        data-sc-tab="alertas"
+                        aria-selected="false"
+                >
+                    Alertas
 
                     <span
-                            id="connectionIndicator"
-                            class="status-indicator offline"
+                            id="pendingAlertCount"
+                            class="sc-counter"
+                            hidden
                     >
-                        ●
+                        0
                     </span>
 
-                </div>
+                </button>
 
-                <p id="lastSeenText">
-                    Sin datos recientes
-                </p>
+                <button
+                        class="sc-tab"
+                        type="button"
+                        data-sc-tab="historial"
+                        aria-selected="false"
+                >
+                    Historial
+                </button>
 
-            </section>
+                <button
+                        class="sc-tab"
+                        type="button"
+                        data-sc-tab="notificaciones"
+                        aria-selected="false"
+                >
+                    Notificaciones
+                </button>
+
+            </nav>
 
 
-            <!-- ================================= -->
-            <!-- GPS -->
-            <!-- ================================= -->
+            <!-- ===================================
+                 INICIO / MONITOREO
+            ==================================== -->
 
             <section
-                    id="gpsWarning"
-                    class="gps-warning card hidden"
+                    id="scPanelInicio"
+                    class="sc-tab-panel sc-active"
             >
 
-                <strong>
-                    ⚠ GPS sin señal
-                </strong>
+                <div class="sc-stack">
 
-                <p>
-                    El bastón no tiene una
-                    ubicación GPS válida.
-                </p>
+                    <!-- ESTADO DE MONITOREO -->
 
-            </section>
+                    <section class="sc-card">
 
+                        <div class="sc-device-status">
 
-            <!-- ================================= -->
-            <!-- MÉTRICAS -->
-            <!-- ================================= -->
+                            <div>
 
-            <section class="metrics-grid">
+                                <span class="sc-stat-label">
+                                    Estado de monitoreo
+                                </span>
 
-                <article class="metric-card card">
+                                <h2 id="connectionStatus">
+                                    Consultando datos...
+                                </h2>
 
-                    <span class="metric-icon">
-                        📏
-                    </span>
+                                <p id="lastSeenText">
+                                    Esperando información
+                                </p>
 
-                    <div>
-
-                        <span class="section-label">
-                            Obstáculo
-                        </span>
-
-                        <strong id="obstacleValue">
-                            --
-                        </strong>
-
-                        <span>cm</span>
-
-                    </div>
-
-                </article>
+                            </div>
 
 
-                <article
-                        id="fallCard"
-                        class="metric-card card"
-                >
+                            <span
+                                    id="connectionIndicator"
+                                    class="status-indicator offline"
+                            >
+                                ●
+                            </span>
 
-                    <span class="metric-icon">
-                        🚨
-                    </span>
+                        </div>
 
-                    <div>
-
-                        <span class="section-label">
-                            Caída
-                        </span>
-
-                        <strong id="fallValue">
-                            Sin detectar
-                        </strong>
-
-                    </div>
-
-                </article>
-
-            </section>
+                    </section>
 
 
-            <!-- ================================= -->
-            <!-- MAPA -->
-            <!-- ================================= -->
+                    <!-- AVISO GPS -->
 
-            <section class="card">
-
-                <div class="section-heading">
-
-                    <div>
-
-                        <span class="section-label">
-                            Ubicación
-                        </span>
-
-                        <h2>
-                            Última posición
-                        </h2>
-
-                    </div>
-
-                    <button
-                            id="centerMapButton"
-                            class="secondary-button"
-                            type="button"
+                    <section
+                            id="gpsWarning"
+                            class="sc-card"
                     >
-                        Centrar
-                    </button>
+
+                        <strong>
+                            GPS sin señal reciente
+                        </strong>
+
+                        <p>
+                            Todavía no hay una ubicación
+                            válida y reciente.
+                        </p>
+
+                    </section>
+
+
+                    <!-- TARJETAS DE ESTADO -->
+
+                    <section class="sc-grid">
+
+                        <article class="sc-stat sc-blue">
+
+                            <div class="sc-stat-icon">
+                                📱
+                            </div>
+
+                            <span class="sc-stat-label">
+                                Dispositivo monitoreado
+                            </span>
+
+                            <strong class="sc-stat-value">
+                                SmartCane
+                            </strong>
+
+                            <span class="sc-stat-description">
+                                ID: baston01
+                            </span>
+
+                        </article>
+
+
+                        <article class="sc-stat sc-green">
+
+                            <div class="sc-stat-icon">
+                                📏
+                            </div>
+
+                            <span class="sc-stat-label">
+                                Sensor de obstáculos
+                            </span>
+
+                            <div>
+
+                                <strong
+                                        id="obstacleValue"
+                                        class="sc-stat-value"
+                                >
+                                    --
+                                </strong>
+
+                                <span>cm</span>
+
+                            </div>
+
+                            <span class="sc-stat-description">
+                                Lectura reciente
+                            </span>
+
+                        </article>
+
+
+                        <article
+                                id="fallCard"
+                                class="sc-metric sc-red"
+                        >
+
+                            <div class="sc-stat-icon">
+                                🛡️
+                            </div>
+
+                            <span class="sc-stat-label">
+                                Estado de caídas
+                            </span>
+
+                            <strong id="fallValue">
+                                Consultando...
+                            </strong>
+
+                        </article>
+
+                    </section>
+
+
+                    <!-- RESUMEN DEL CUIDADOR -->
+
+                    <section
+                            id="caregiverSummary"
+                            class="sc-grid-two"
+                            hidden
+                    >
+
+                        <article class="sc-card">
+
+                            <h3 class="sc-card-title">
+                                Seguimiento GPS
+                            </h3>
+
+                            <p>
+                                Consulta la ubicación
+                                del teléfono que acompaña
+                                al bastón.
+                            </p>
+
+                            <p class="sc-device-note">
+                                El mapa muestra las
+                                posiciones disponibles
+                                en Firebase.
+                            </p>
+
+                            <button
+                                    class="primary-button"
+                                    type="button"
+                                    data-sc-open="mapa"
+                            >
+                                Ver ubicación
+                            </button>
+
+                        </article>
+
+
+                        <article class="sc-card">
+
+                            <h3 class="sc-card-title">
+                                Centro de emergencias
+                            </h3>
+
+                            <p>
+                                Revisa las caídas y
+                                alertas SOS pendientes
+                                de atención.
+                            </p>
+
+                            <p class="sc-device-note">
+                                Podrás ver el lugar
+                                de la emergencia y
+                                marcarla como atendida.
+                            </p>
+
+                            <button
+                                    class="primary-button"
+                                    type="button"
+                                    data-sc-open="alertas"
+                            >
+                                Revisar alertas
+                            </button>
+
+                        </article>
+
+                    </section>
+
+
+                    <!-- INFORMACIÓN DEL BASTÓN -->
+
+                    <section
+                            id="deviceInfoPanel"
+                            class="sc-card"
+                    >
+
+                        <h3 class="sc-card-title">
+                            Mi bastón inteligente
+                        </h3>
+
+                        <p>
+                            El monitoreo funciona
+                            mediante Bluetooth BLE
+                            y la ubicación GPS
+                            del teléfono Android.
+                        </p>
+
+                        <p class="sc-device-note">
+                            El botón SOS físico del
+                            bastón envía emergencias
+                            a Firebase y Telegram.
+                        </p>
+
+                        <p class="sc-device-note">
+                            Para que el prototipo
+                            reciba señales Bluetooth,
+                            mantén abierta esta página
+                            en Chrome Android.
+                        </p>
+
+                        <!-- DashboardView.js
+                             insertará aquí el
+                             panel Bluetooth. -->
+
+                    </section>
 
                 </div>
 
-                <div
-                        id="map"
-                        class="map-container"
-                        aria-label="Mapa de ubicación del bastón"
-                ></div>
-
-                <p
-                        id="coordinatesText"
-                        class="coordinates"
-                >
-                    Ubicación no disponible
-                </p>
-
             </section>
 
 
-            <!-- ================================= -->
-            <!-- NUEVO: NOTIFICACIONES -->
-            <!-- ================================= -->
+            <!-- ===================================
+                 UBICACIÓN
+            ==================================== -->
 
             <section
-                    class="card"
-                    id="notificationsPanel"
+                    id="scPanelMapa"
+                    class="sc-tab-panel"
             >
 
-                <div class="section-heading">
+                <div class="sc-stack">
 
-                    <div>
+                    <section class="sc-card">
 
-                        <span class="section-label">
-                            Seguridad
-                        </span>
+                        <div class="sc-section-heading">
 
-                        <h2>
-                            Notificaciones de emergencia
-                        </h2>
+                            <div>
 
-                    </div>
+                                <h2>
+                                    Ubicación del bastón
+                                </h2>
+
+                                <p>
+                                    Posición GPS y
+                                    trayectoria registrada.
+                                </p>
+
+                            </div>
+
+
+                            <button
+                                    id="centerMapButton"
+                                    class="secondary-button"
+                                    type="button"
+                            >
+                                Centrar mapa
+                            </button>
+
+                        </div>
+
+
+                        <div
+                                id="map"
+                                class="map-container"
+                                aria-label="Mapa de ubicación del bastón"
+                        ></div>
+
+
+                        <p
+                                id="coordinatesText"
+                                class="coordinates"
+                        >
+                            Esperando ubicación GPS...
+                        </p>
+
+                    </section>
+
+
+                    <section class="sc-card">
+
+                        <h3 class="sc-card-title">
+                            Recorrido registrado
+                        </h3>
+
+                        <p>
+                            El mapa podrá mostrar
+                            los puntos de ubicación
+                            que estén almacenados
+                            en Firebase.
+                        </p>
+
+                        <p class="sc-device-note">
+                            El historial GPS no es
+                            necesariamente una ruta
+                            continua en tiempo real:
+                            depende de las posiciones
+                            que haya registrado
+                            el teléfono.
+                        </p>
+
+                    </section>
 
                 </div>
-
-                <p>
-                    Activa las notificaciones para
-                    recibir avisos de alertas SOS
-                    y posibles caídas.
-                </p>
-
-                <p
-                        id="notificationStatus"
-                        role="status"
-                        aria-live="polite"
-                        style="margin: 12px 0;"
-                >
-                    Comprobando permisos...
-                </p>
-
-                <div
-                        style="
-                        display: flex;
-                        flex-wrap: wrap;
-                        gap: 10px;
-                        margin-top: 15px;
-                    "
-                >
-
-                    <button
-                            id="enableNotificationsButton"
-                            class="primary-button"
-                            type="button"
-                    >
-                        🔔 Activar notificaciones
-                    </button>
-
-                    <button
-                            id="testNotificationButton"
-                            class="secondary-button"
-                            type="button"
-                    >
-                        Probar notificación
-                    </button>
-
-                </div>
-
-                <p
-                        style="
-                        margin-top: 12px;
-                        font-size: 13px;
-                        opacity: 0.8;
-                    "
-                >
-                    Las notificaciones de prueba
-                    funcionan con permisos del navegador.
-                    Las alertas con la página cerrada
-                    requieren activar posteriormente
-                    las notificaciones push.
-                </p>
 
             </section>
 
 
-            <!-- ================================= -->
-            <!-- ALERTAS RECIENTES -->
-            <!-- ================================= -->
+            <!-- ===================================
+                 ALERTAS PENDIENTES
+            ==================================== -->
 
-            <section class="card">
+            <section
+                    id="scPanelAlertas"
+                    class="sc-tab-panel"
+            >
 
-                <div class="section-heading">
+                <section class="sc-card">
 
-                    <div>
+                    <div class="sc-section-heading">
 
-                        <span class="section-label">
-                            Seguridad
+                        <div>
+
+                            <h2>
+                                Emergencias pendientes
+                            </h2>
+
+                            <p>
+                                Alertas que todavía
+                                necesitan atención
+                                del cuidador.
+                            </p>
+
+                        </div>
+
+
+                        <span
+                                id="pendingAlertCountSecondary"
+                                class="sc-counter"
+                        >
+                            0 pendientes
                         </span>
 
-                        <h2>
-                            Alertas recientes
-                        </h2>
+                    </div>
+
+
+                    <div
+                            id="alertsList"
+                            class="alerts-list sc-alert-list"
+                    >
+
+                        <div class="sc-empty">
+                            Consultando alertas...
+                        </div>
 
                     </div>
 
+
+                    <div
+                            id="noPendingAlerts"
+                            class="sc-empty"
+                            hidden
+                    >
+                        No hay emergencias pendientes.
+                    </div>
+
+                </section>
+
+            </section>
+
+
+            <!-- ===================================
+                 HISTORIAL DE ALERTAS
+            ==================================== -->
+
+            <section
+                    id="scPanelHistorial"
+                    class="sc-tab-panel"
+            >
+
+                <div class="sc-stack">
+
+                    <section class="sc-card">
+
+                        <div class="sc-section-heading">
+
+                            <div>
+
+                                <h2>
+                                    Historial de emergencias
+                                </h2>
+
+                                <p>
+                                    Alertas marcadas
+                                    como atendidas.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <div
+                                id="historyAlertsList"
+                                class="sc-alert-list"
+                        >
+
+                            <div class="sc-empty">
+                                Consultando historial...
+                            </div>
+
+                        </div>
+
+                    </section>
+
+
+                    <section class="sc-card">
+
+                        <h3 class="sc-card-title">
+                            Lugares de emergencia
+                        </h3>
+
+                        <p>
+                            Las alertas guardadas
+                            con coordenadas permiten
+                            abrir en Google Maps
+                            el lugar donde fueron
+                            generadas.
+                        </p>
+
+                        <p class="sc-device-note">
+                            El historial de alertas
+                            guarda emergencias.
+                            La pestaña Ubicación
+                            muestra el recorrido GPS.
+                        </p>
+
+
+                        <button
+                                class="secondary-button"
+                                type="button"
+                                data-sc-open="mapa"
+                        >
+                            Consultar recorrido
+                        </button>
+
+                    </section>
+
                 </div>
 
-                <div
-                        id="alertsList"
-                        class="alerts-list"
+            </section>
+
+
+            <!-- ===================================
+                 NOTIFICACIONES DEL CUIDADOR
+            ==================================== -->
+
+            <section
+                    id="scPanelNotificaciones"
+                    class="sc-tab-panel"
+            >
+
+                <section
+                        id="notificationsPanel"
+                        class="sc-card"
+                        hidden
                 >
 
-                    <div class="empty-state">
-                        No hay alertas recientes.
+                    <div class="sc-section-heading">
+
+                        <div>
+
+                            <h2>
+                                Notificaciones de emergencia
+                            </h2>
+
+                            <p>
+                                Configuración exclusiva
+                                del cuidador.
+                            </p>
+
+                        </div>
+
                     </div>
 
-                </div>
+
+                    <p>
+                        Permite avisos del navegador
+                        cuando se detecten nuevas
+                        alertas de emergencia.
+                    </p>
+
+
+                    <p
+                            id="notificationStatus"
+                            role="status"
+                            aria-live="polite"
+                    >
+                        Comprobando permisos...
+                    </p>
+
+
+                    <div
+                            style="
+                            display:flex;
+                            flex-wrap:wrap;
+                            gap:12px;
+                            margin-top:18px;
+                        "
+                    >
+
+                        <button
+                                id="enableNotificationsButton"
+                                class="primary-button"
+                                type="button"
+                        >
+                            Activar notificaciones
+                        </button>
+
+
+                        <button
+                                id="testNotificationButton"
+                                class="secondary-button"
+                                type="button"
+                        >
+                            Probar notificación
+                        </button>
+
+                    </div>
+
+
+                    <p class="sc-device-note">
+                        Estas notificaciones
+                        dependen de los permisos
+                        del navegador. Los avisos
+                        push con la aplicación
+                        cerrada requieren una
+                        integración adicional.
+                    </p>
+
+                </section>
 
             </section>
 
@@ -554,13 +1761,14 @@
 </main>
 
 
-<!-- ===================================== -->
-<!-- LÓGICA DEL BOTÓN DE NOTIFICACIONES -->
-<!-- ===================================== -->
+<!-- ======================================
+     NOTIFICACIONES DEL CUIDADOR
+======================================= -->
 
 <script>
-
     (function () {
+
+        "use strict";
 
         const enableButton =
             document.getElementById(
@@ -577,20 +1785,67 @@
                 "notificationStatus"
             );
 
-        function updateStatus(message) {
+        const notificationsPanel =
+            document.getElementById(
+                "notificationsPanel"
+            );
 
-            statusText.textContent = message;
+
+        /*
+         * ====================================
+         * COMPROBAR ACCESO DEL CUIDADOR
+         * ====================================
+         *
+         * DashboardView habilita este panel
+         * únicamente para el cuidador.
+         */
+        function caregiverAllowed() {
+
+            return Boolean(
+                notificationsPanel &&
+                !notificationsPanel.hidden &&
+                !notificationsPanel.classList.contains(
+                    "hidden"
+                )
+            );
         }
 
+
+        /*
+         * ====================================
+         * MOSTRAR ESTADO
+         * ====================================
+         */
+        function updateStatus(message) {
+
+            if (statusText) {
+
+                statusText.textContent =
+                    message;
+            }
+        }
+
+
+        /*
+         * ====================================
+         * COMPROBAR COMPATIBILIDAD
+         * ====================================
+         */
         function supported() {
 
-            return (
+            return Boolean(
                 window.isSecureContext &&
                 "Notification" in window &&
                 "serviceWorker" in navigator
             );
         }
 
+
+        /*
+         * ====================================
+         * VER ESTADO DE LOS PERMISOS
+         * ====================================
+         */
         function showPermissionStatus() {
 
             if (!supported()) {
@@ -602,10 +1857,12 @@
                 return;
             }
 
-            if (Notification.permission === "granted") {
+            if (
+                Notification.permission === "granted"
+            ) {
 
                 updateStatus(
-                    "Notificaciones permitidas en este dispositivo."
+                    "Las notificaciones están permitidas."
                 );
 
             } else if (
@@ -613,7 +1870,7 @@
             ) {
 
                 updateStatus(
-                    "Notificaciones bloqueadas. Actívalas desde los ajustes del navegador."
+                    "Las notificaciones están bloqueadas. Revisa los ajustes del navegador."
                 );
 
             } else {
@@ -626,12 +1883,17 @@
 
 
         /*
-         * Solicitar permiso únicamente
-         * después de pulsar el botón.
+         * ====================================
+         * ACTIVAR PERMISOS
+         * ====================================
          */
         enableButton.addEventListener(
             "click",
             async () => {
+
+                if (!caregiverAllowed()) {
+                    return;
+                }
 
                 if (!supported()) {
 
@@ -647,7 +1909,8 @@
                     updateStatus(
                         permission === "granted"
                             ? "Notificaciones activadas correctamente."
-                            : "Permiso no concedido: " + permission
+                            : "Permiso no concedido: " +
+                            permission
                     );
 
                 } catch (error) {
@@ -662,11 +1925,17 @@
 
 
         /*
-         * Mostrar una notificación de prueba.
+         * ====================================
+         * NOTIFICACIÓN DE PRUEBA
+         * ====================================
          */
         testButton.addEventListener(
             "click",
             async () => {
+
+                if (!caregiverAllowed()) {
+                    return;
+                }
 
                 if (!supported()) {
 
@@ -674,7 +1943,9 @@
                     return;
                 }
 
-                if (Notification.permission !== "granted") {
+                if (
+                    Notification.permission !== "granted"
+                ) {
 
                     updateStatus(
                         "Primero debes activar las notificaciones."
@@ -694,7 +1965,9 @@
                         registration =
                             await navigator.serviceWorker.register(
                                 "./sw.js",
-                                { scope: "./" }
+                                {
+                                    scope: "./"
+                                }
                             );
                     }
 
@@ -705,10 +1978,11 @@
                     }
 
                     await registration.showNotification(
-                        "Smart Cane - Prueba",
+                        "SmartCane - Prueba",
                         {
+
                             body:
-                                "Las notificaciones de tu bastón inteligente funcionan.",
+                                "Las notificaciones del cuidador funcionan.",
 
                             icon:
                                 "./newfondo.png",
@@ -721,6 +1995,7 @@
                                 Date.now(),
 
                             data: {
+
                                 url: new URL(
                                     "./",
                                     window.location.href
@@ -730,12 +2005,15 @@
                     );
 
                     updateStatus(
-                        "Notificación de prueba enviada al sistema."
+                        "Notificación de prueba enviada."
                     );
 
                 } catch (error) {
 
-                    console.error(error);
+                    console.error(
+                        "Error de prueba:",
+                        error
+                    );
 
                     updateStatus(
                         "No se pudo mostrar la notificación: " +
@@ -745,14 +2023,17 @@
             }
         );
 
+
         showPermissionStatus();
 
     })();
-
 </script>
 
 
-<!-- Firebase + aplicación -->
+<!-- ======================================
+     INICIO DE LA APLICACIÓN
+======================================= -->
+
 <script
         type="module"
         src="./src/main.js"
