@@ -1,3 +1,4 @@
+
 const params = new URLSearchParams(
     window.location.search
 );
@@ -37,7 +38,7 @@ async function startApplication() {
      * MODO NORMAL
      * ========================================
      *
-     * Aquí utilizamos Firebase.
+     * Firebase + GPS del teléfono + BLE.
      */
     try {
 
@@ -89,6 +90,18 @@ async function startApplication() {
             "./application/PhoneLocationService.js"
             );
 
+        /*
+         * NUEVO: servicio Bluetooth BLE.
+         *
+         * Permitirá recibir notificaciones
+         * del ESP32 SmartCane.
+         */
+        const {
+            BluetoothService
+        } = await import(
+            "./application/BluetoothService.js"
+            );
+
         const {
             LeafletMapAdapter
         } = await import(
@@ -127,7 +140,9 @@ async function startApplication() {
 
 
         /*
-         * Inicializar Firebase
+         * ========================================
+         * INICIALIZAR FIREBASE
+         * ========================================
          */
         const {
             auth,
@@ -136,7 +151,9 @@ async function startApplication() {
 
 
         /*
-         * Repositorios
+         * ========================================
+         * REPOSITORIOS
+         * ========================================
          */
         const authRepository =
             new FirebaseAuthRepository(
@@ -150,7 +167,9 @@ async function startApplication() {
 
 
         /*
-         * Servicios
+         * ========================================
+         * SERVICIOS
+         * ========================================
          */
         const authService =
             new AuthService(
@@ -180,12 +199,23 @@ async function startApplication() {
                 deviceRepository
             );
 
+        /*
+         * GPS del teléfono Android.
+         */
         const phoneLocationService =
             new PhoneLocationService();
 
+        /*
+         * NUEVO: Bluetooth del ESP32.
+         */
+        const bluetoothService =
+            new BluetoothService();
+
 
         /*
-         * Mapa
+         * ========================================
+         * MAPA
+         * ========================================
          */
         const mapAdapter =
             new LeafletMapAdapter(
@@ -194,7 +224,9 @@ async function startApplication() {
 
 
         /*
-         * Vistas
+         * ========================================
+         * VISTAS
+         * ========================================
          */
         const loginView =
             new LoginView(
@@ -206,7 +238,9 @@ async function startApplication() {
 
 
         /*
-         * Controlador principal
+         * ========================================
+         * CONTROLADOR PRINCIPAL
+         * ========================================
          */
         const controller =
             new AppController({
@@ -229,18 +263,27 @@ async function startApplication() {
 
                 notificationService,
 
-                phoneLocationService
+                phoneLocationService,
+
+                // NUEVO: Servicio Bluetooth BLE
+                bluetoothService
 
             });
 
 
         /*
-         * Iniciar aplicación
+         * ========================================
+         * INICIAR APLICACIÓN
+         * ========================================
          */
         controller.start();
 
         console.log(
             "Aplicación iniciada correctamente."
+        );
+
+        console.log(
+            "Servicio Bluetooth BLE disponible."
         );
 
 

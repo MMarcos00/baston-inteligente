@@ -1,3 +1,6 @@
+
+import { ALERT_TYPES } from "../domain/constants.js";
+
 export class AppController {
 
     constructor({
@@ -10,7 +13,8 @@ export class AppController {
                     dashboardView,
                     mapAdapter,
                     notificationService,
-                    phoneLocationService
+                    phoneLocationService,
+                    bluetoothService
                 }) {
 
         this.authService = authService;
@@ -23,17 +27,35 @@ export class AppController {
         this.mapAdapter = mapAdapter;
         this.notificationService = notificationService;
         this.phoneLocationService = phoneLocationService;
+        this.bluetoothService = bluetoothService;
 
         this.unsubscribers = [];
-
         this.simulatorBound = false;
 
-        // Control de ubicación del teléfono.
+        // GPS del teléfono.
         this.phoneLocationReceived = false;
         this.lastPhoneHistoryAt = 0;
+        this.lastPhoneLocation = null;
+        this.lastPhoneLocationAt = 0;
+
+        // Bluetooth BLE.
+        this.bluetoothConnecting = false;
+        this.lastBleMessage = null;
+
+        // Evita procesar un mismo SOS repetidamente.
+        this.sosProcessing = false;
+        this.lastSosAt = 0;
+
+        // Sesión Firebase.
+        this.sessionActive = false;
     }
 
 
+    /*
+     * ========================================
+     * INICIAR APLICACIÓN
+     * ========================================
+     */
     start() {
 
         this.bindViews();
@@ -43,15 +65,26 @@ export class AppController {
         this.authService.observeSession((user) => {
 
             if (user) {
+
+                this.sessionActive = true;
                 this.showDashboard();
+
             } else {
+
+                this.sessionActive = false;
                 this.showLogin();
+
             }
 
         });
     }
 
 
+    /*
+     * ========================================
+     * VINCULAR BOTONES
+     * ========================================
+     */
     bindViews() {
 
         this.loginView.bindLogin(
@@ -80,36 +113,55 @@ export class AppController {
 
             }
         );
+
+        // Botón Bluetooth SmartCane.
+        this.dashboardView.bindBluetooth(
+            () => this.connectBluetooth()
+        );
     }
 
 
+    /*
+     * ========================================
+     * MOSTRAR DASHBOARD
+     * ========================================
+     */
     async showDashboard() {
 
         this.loginView.hide();
-
         this.dashboardView.show();
 
         this.mapAdapter.initialize();
 
         setTimeout(() => {
 
-            this.mapAdapter.invalidateSize();
+            if (this.sessionActive) {
+                this.mapAdapter.invalidateSize();
+            }
 
         }, 100);
 
         await this.notificationService.requestPermission();
 
+        if (!this.sessionActive) {
+            return;
+        }
+
         this.startSubscriptions();
 
 
         /*
-         * Activar el GPS del teléfono solamente
-         * cuando la URL contiene ?gps=1.
+         * ========================================
+         * GPS DEL TELÉFONO
+         * ========================================
          */
-        const gpsEnabled =
+        const params =
             new URLSearchParams(
                 window.location.search
-            ).get("gps") === "1";
+            );
+
+        const gpsEnabled =
+            params.get("gps") === "1";
 
         if (gpsEnabled && this.phoneLocationService) {
 
@@ -117,24 +169,43 @@ export class AppController {
 
                 async (location) => {
 
+                    if (!this.sessionActive) {
+                        return;
+                    }
+
+                    /*
+                     * Guardar la última lectura
+                     * válida en memoria.
+                     */
+                    if (this.isValidLocation(location)) {
+
+                        this.lastPhoneLocation = {
+                            lat: location.lat,
+                            lng: location.lng,
+                            gpsFix: true
+                        };
+
+                        this.lastPhoneLocationAt = Date.now();
+                    }
+
                     try {
 
-                        // Guardar ubicación actual en Firebase.
-                        await this.deviceService.writePhoneLocation(
-                            location
-                        );
+                        // Actualizar Firebase.
+                        await this.deviceService
+                            .writePhoneLocation(location);
 
-                        // Guardar un punto del recorrido
-                        // cada 30 segundos como máximo.
+                        // Historial cada 30 segundos.
                         const now = Date.now();
 
                         if (
+                            this.isValidLocation(location) &&
                             now - this.lastPhoneHistoryAt >= 30000
                         ) {
 
-                            await this.deviceService.writePhoneLocationHistory(
-                                location
-                            );
+                            await this.deviceService
+                                .writePhoneLocationHistory(
+                                    location
+                                );
 
                             this.lastPhoneHistoryAt = now;
                         }
@@ -142,81 +213,95 @@ export class AppController {
                     } catch (error) {
 
                         console.error(
-                            "No se pudo guardar la ubicación del teléfono:",
+                            "Error guardando ubicación GPS:",
                             error
                         );
 
                     }
-
                 },
 
                 (message) => {
 
                     console.error(
-                        "Error de GPS del teléfono:",
+                        "Error GPS:",
                         message
                     );
 
                 }
-
             );
-
         }
 
 
         /*
-         * Activar el simulador solamente con ?sim=1.
+         * ========================================
+         * SIMULADOR
+         * ========================================
          */
-        const simulatorEnabled =
-            new URLSearchParams(
-                window.location.search
-            ).get("sim") === "1";
-
-        if (simulatorEnabled) {
+        if (params.get("sim") === "1") {
 
             this.dashboardView.showSimulator();
 
             if (!this.simulatorBound) {
 
                 this.bindSimulator();
-
                 this.simulatorBound = true;
 
             }
-
         }
 
+        if (!this.bluetoothService?.device?.gatt?.connected) {
+
+            this.dashboardView.updateBluetoothStatus(
+                "disconnected"
+            );
+        }
     }
 
 
+    /*
+     * ========================================
+     * CERRAR SESIÓN
+     * ========================================
+     */
     showLogin() {
+
+        this.sessionActive = false;
 
         this.stopSubscriptions();
 
-        // Detener seguimiento del teléfono al cerrar sesión.
         if (this.phoneLocationService) {
-
             this.phoneLocationService.stop();
-
         }
 
         this.phoneLocationReceived = false;
+        this.lastPhoneLocation = null;
+        this.lastPhoneLocationAt = 0;
+        this.lastPhoneHistoryAt = 0;
+
+        if (this.bluetoothService) {
+
+            this.bluetoothService.disconnect()
+                .catch(console.error);
+        }
+
+        this.bluetoothConnecting = false;
+        this.lastBleMessage = null;
 
         this.dashboardView.hide();
-
         this.loginView.show();
-
     }
 
 
+    /*
+     * ========================================
+     * SUSCRIPCIONES FIREBASE
+     * ========================================
+     */
     startSubscriptions() {
 
         this.stopSubscriptions();
 
-
-        /*
-         * Estado del bastón.
-         */
+        // Estado del dispositivo.
         const statusUnsubscribe =
             this.deviceService.subscribeToStatus(
 
@@ -230,11 +315,6 @@ export class AppController {
                         online
                     );
 
-                    /*
-                     * Mostrar la ubicación del bastón
-                     * si el teléfono no está proporcionando
-                     * una ubicación válida.
-                     */
                     if (
                         !this.phoneLocationReceived &&
                         status &&
@@ -245,26 +325,19 @@ export class AppController {
                             status.lat,
                             status.lng
                         );
-
                     }
-
                 },
 
                 (error) => {
-
                     console.error(
                         "Error de estado:",
                         error
                     );
-
                 }
-
             );
 
 
-        /*
-         * Historial de ubicaciones del bastón.
-         */
+        // Historial del bastón.
         const historyUnsubscribe =
             this.deviceService.subscribeToHistory(
 
@@ -273,24 +346,18 @@ export class AppController {
                     this.mapAdapter.updateTrajectory(
                         points
                     );
-
                 },
 
                 (error) => {
-
                     console.error(
                         "Error de historial:",
                         error
                     );
-
                 }
-
             );
 
 
-        /*
-         * Alertas de caída y SOS.
-         */
+        // Alertas.
         const alertsUnsubscribe =
             this.alertService.subscribeToAlerts(
 
@@ -300,45 +367,30 @@ export class AppController {
                         alerts,
 
                         (id) =>
-                            this.alertService.markAsAttended(
-                                id
-                            )
-
+                            this.alertService
+                                .markAsAttended(id)
                     );
-
                 },
 
                 (error) => {
-
                     console.error(
                         "Error de alertas:",
                         error
                     );
-
                 }
-
             );
 
 
-        /*
-         * Ubicación actual del teléfono desde Firebase.
-         */
+        // Ubicación del teléfono desde Firebase.
         const phoneLocationUnsubscribe =
             this.deviceService.subscribeToPhoneLocation(
 
                 (location) => {
 
-                    if (
-                        !location ||
-                        location.gpsFix !== true ||
-                        !Number.isFinite(location.lat) ||
-                        !Number.isFinite(location.lng)
-                    ) {
+                    if (!this.isValidLocation(location)) {
 
                         this.phoneLocationReceived = false;
-
                         return;
-
                     }
 
                     this.phoneLocationReceived = true;
@@ -347,112 +399,471 @@ export class AppController {
                         location.lat,
                         location.lng
                     );
+                },
 
+                (error) => {
+                    console.error(
+                        "Error de ubicación del teléfono:",
+                        error
+                    );
+                }
+            );
+
+
+        this.unsubscribers = [
+            statusUnsubscribe,
+            historyUnsubscribe,
+            alertsUnsubscribe,
+            phoneLocationUnsubscribe
+        ];
+    }
+
+
+    /*
+     * ========================================
+     * DETENER SUSCRIPCIONES
+     * ========================================
+     */
+    stopSubscriptions() {
+
+        for (const unsubscribe of this.unsubscribers) {
+
+            if (typeof unsubscribe === "function") {
+                unsubscribe();
+            }
+        }
+
+        this.unsubscribers = [];
+    }
+
+
+    /*
+     * ========================================
+     * CONECTAR BLUETOOTH
+     * ========================================
+     */
+    async connectBluetooth() {
+
+        if (
+            !this.sessionActive ||
+            !this.bluetoothService ||
+            this.bluetoothConnecting
+        ) {
+            return;
+        }
+
+        if (!this.bluetoothService.isSupported()) {
+
+            this.dashboardView.updateBluetoothStatus(
+                "error"
+            );
+
+            window.alert(
+                "Utiliza Google Chrome en Android " +
+                "con Bluetooth y HTTPS habilitados."
+            );
+
+            return;
+        }
+
+        if (
+            this.bluetoothService.device?.gatt?.connected
+        ) {
+
+            this.dashboardView.updateBluetoothStatus(
+                "connected"
+            );
+
+            return;
+        }
+
+        this.bluetoothConnecting = true;
+
+        this.dashboardView.updateBluetoothStatus(
+            "connecting"
+        );
+
+        try {
+
+            await this.bluetoothService.connect(
+
+                (message) => {
+
+                    if (this.sessionActive) {
+                        this.handleBluetoothMessage(message);
+                    }
+                },
+
+                (status) => {
+
+                    if (!this.sessionActive) {
+                        return;
+                    }
+
+                    console.log(
+                        "Estado BLE:",
+                        status
+                    );
+
+                    this.dashboardView.updateBluetoothStatus(
+                        status
+                    );
+                }
+            );
+
+            if (!this.sessionActive) {
+
+                await this.bluetoothService.disconnect();
+                return;
+            }
+
+            if (!this.bluetoothService.device?.gatt?.connected) {
+
+                throw new Error(
+                    "La conexión BLE se perdió."
+                );
+            }
+
+            this.dashboardView.updateBluetoothStatus(
+                "connected"
+            );
+
+            this.dashboardView.updateBluetoothMessage(
+                "Conexión establecida con SmartCane"
+            );
+
+        } catch (error) {
+
+            console.error(
+                "Error Bluetooth:",
+                error
+            );
+
+            if (!this.sessionActive) {
+                return;
+            }
+
+            if (error.name === "NotFoundError") {
+
+                this.dashboardView.updateBluetoothStatus(
+                    "disconnected"
+                );
+
+            } else {
+
+                this.dashboardView.updateBluetoothStatus(
+                    "error"
+                );
+
+                window.alert(
+                    "No se pudo conectar SmartCane: " +
+                    error.message
+                );
+            }
+
+        } finally {
+
+            this.bluetoothConnecting = false;
+        }
+    }
+
+
+    /*
+     * ========================================
+     * RECIBIR NOTIFICACIÓN BLE
+     * ========================================
+     */
+    handleBluetoothMessage(message) {
+
+        if (!this.sessionActive) {
+            return;
+        }
+
+        const text = String(message ?? "").trim();
+
+        if (!text) {
+            return;
+        }
+
+        this.lastBleMessage = text;
+
+        console.log(
+            "Mensaje del ESP32:",
+            text
+        );
+
+        this.dashboardView.updateBluetoothMessage(
+            text
+        );
+
+        /*
+         * Identificar SOS físico.
+         */
+        if (text === "SOS: Necesito ayuda") {
+
+            console.warn(
+                "SOS FÍSICO RECIBIDO POR BLE"
+            );
+
+            // Procesar alerta sin bloquear
+            // las siguientes notificaciones BLE.
+            this.processBluetoothSOS();
+        }
+    }
+
+
+    /*
+     * ========================================
+     * VALIDAR UBICACIÓN GPS
+     * ========================================
+     */
+    isValidLocation(location) {
+
+        return Boolean(
+            location &&
+            location.gpsFix === true &&
+            Number.isFinite(location.lat) &&
+            Number.isFinite(location.lng) &&
+            location.lat >= -90 &&
+            location.lat <= 90 &&
+            location.lng >= -180 &&
+            location.lng <= 180
+        );
+    }
+
+
+    /*
+     * ========================================
+     * OBTENER UBICACIÓN PARA SOS
+     * ========================================
+     *
+     * Usa una lectura reciente del teléfono.
+     * Si no existe, solicita otra al navegador.
+     */
+    async getSOSLocation() {
+
+        const now = Date.now();
+
+        // Lectura válida de los últimos 30 segundos.
+        if (
+            this.isValidLocation(this.lastPhoneLocation) &&
+            now - this.lastPhoneLocationAt <= 30000
+        ) {
+
+            return {
+                ...this.lastPhoneLocation
+            };
+        }
+
+        if (!navigator.geolocation) {
+
+            throw new Error(
+                "Este teléfono no admite geolocalización."
+            );
+        }
+
+        return new Promise((resolve, reject) => {
+
+            navigator.geolocation.getCurrentPosition(
+
+                (position) => {
+
+                    const location = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude,
+                        gpsFix: true
+                    };
+
+                    if (!this.isValidLocation(location)) {
+
+                        reject(
+                            new Error(
+                                "La ubicación GPS no es válida."
+                            )
+                        );
+
+                        return;
+                    }
+
+                    this.lastPhoneLocation = location;
+                    this.lastPhoneLocationAt = Date.now();
+
+                    resolve(location);
                 },
 
                 (error) => {
 
-                    console.error(
-                        "Error al recibir la ubicación del teléfono:",
-                        error
+                    reject(
+                        new Error(
+                            "No se pudo obtener el GPS: " +
+                            error.message
+                        )
                     );
+                },
 
+                {
+                    enableHighAccuracy: true,
+                    maximumAge: 10000,
+                    timeout: 15000
                 }
-
             );
-
-
-        /*
-         * Guardar las suscripciones para poder detenerlas.
-         */
-        this.unsubscribers = [
-
-            statusUnsubscribe,
-
-            historyUnsubscribe,
-
-            alertsUnsubscribe,
-
-            phoneLocationUnsubscribe
-
-        ];
-
+        });
     }
 
 
-    stopSubscriptions() {
+    /*
+     * ========================================
+     * PROCESAR SOS DEL ESP32
+     * ========================================
+     *
+     * BLE -> GPS teléfono -> Firebase.
+     */
+    async processBluetoothSOS() {
 
-        for (
-            const unsubscribe of this.unsubscribers
-            ) {
-
-            if (typeof unsubscribe === "function") {
-
-                unsubscribe();
-
-            }
-
+        if (
+            !this.sessionActive ||
+            this.sosProcessing
+        ) {
+            return;
         }
 
-        this.unsubscribers = [];
+        const now = Date.now();
 
+        // Evitar eventos duplicados muy próximos.
+        if (now - this.lastSosAt < 3000) {
+            return;
+        }
+
+        this.sosProcessing = true;
+
+        try {
+
+            console.log(
+                "Obteniendo ubicación para SOS..."
+            );
+
+            /*
+             * Obtener coordenadas del teléfono.
+             */
+            const location =
+                await this.getSOSLocation();
+
+            if (!this.sessionActive) {
+                return;
+            }
+
+            console.log(
+                "Ubicación para SOS:",
+                location
+            );
+
+            /*
+             * Crear alerta mediante AlertService.
+             *
+             * AlertService utiliza internamente
+             * FirebaseDeviceRepository.
+             */
+            const alertId =
+                await this.alertService.createAlert(
+                    ALERT_TYPES.SOS,
+                    location
+                );
+
+            this.lastSosAt = Date.now();
+
+            console.log(
+                "Alerta SOS guardada en Firebase:",
+                alertId
+            );
+
+            this.dashboardView.updateBluetoothMessage(
+                "SOS enviado correctamente a Firebase"
+            );
+
+            /*
+             * La suscripción de alertas existente
+             * actualizará el panel del cuidador.
+             */
+
+        } catch (error) {
+
+            console.error(
+                "No se pudo registrar el SOS:",
+                error
+            );
+
+            this.dashboardView.updateBluetoothMessage(
+                "SOS recibido, pero no se pudo guardar: " +
+                error.message
+            );
+
+            /*
+             * No inventamos coordenadas.
+             * Para admitir SOS sin ubicación
+             * debemos verificar primero las
+             * reglas actuales de Firebase.
+             */
+            window.alert(
+                "Se recibió el SOS del bastón, " +
+                "pero no se pudo registrar en Firebase. " +
+                error.message
+            );
+
+        } finally {
+
+            this.sosProcessing = false;
+        }
     }
 
 
+    /*
+     * ========================================
+     * SIMULADOR
+     * ========================================
+     */
     bindSimulator() {
 
         this.dashboardView.bindSimulator({
 
             normal: async () => {
-
                 await this.runSimulator(
-                    () =>
-                        this.simulatorService.simulateNormal()
+                    () => this.simulatorService.simulateNormal()
                 );
-
             },
 
             obstacle: async () => {
-
                 await this.runSimulator(
-                    () =>
-                        this.simulatorService.simulateObstacle()
+                    () => this.simulatorService.simulateObstacle()
                 );
-
             },
 
             fall: async () => {
-
                 await this.runSimulator(
-                    () =>
-                        this.simulatorService.simulateFall()
+                    () => this.simulatorService.simulateFall()
                 );
-
             },
 
             sos: async () => {
-
                 await this.runSimulator(
-                    () =>
-                        this.simulatorService.simulateSos()
+                    () => this.simulatorService.simulateSos()
                 );
-
             },
 
             gps: async () => {
-
                 await this.runSimulator(
-                    () =>
-                        this.simulatorService.simulateGpsWithoutSignal()
+                    () => this.simulatorService
+                        .simulateGpsWithoutSignal()
                 );
-
             }
-
         });
-
     }
 
 
+    /*
+     * ========================================
+     * EJECUTAR SIMULADOR
+     * ========================================
+     */
     async runSimulator(operation) {
 
         try {
@@ -463,12 +874,10 @@ export class AppController {
 
             console.error(error);
 
-            alert(
-                `No se pudo ejecutar el simulador: ${error.message}`
+            window.alert(
+                "No se pudo ejecutar el simulador: " +
+                error.message
             );
-
         }
-
     }
-
 }
