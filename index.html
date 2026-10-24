@@ -1,5 +1,7 @@
+
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
 
@@ -15,7 +17,11 @@
 
     <meta name="theme-color" content="#2563eb">
 
-    <link rel="icon" href="./newfondo.png" type="image/svg+xml">
+    <link
+            rel="icon"
+            href="./newfondo.png"
+            type="image/png"
+    >
 
     <link
             rel="manifest"
@@ -50,12 +56,16 @@
         class="offline-banner hidden"
         role="status"
 >
-    Sin conexión a Internet. Algunas funciones pueden no estar disponibles.
+    Sin conexión a Internet.
+    Algunas funciones pueden no estar disponibles.
 </div>
 
 <main id="app">
 
+    <!-- ===================================== -->
     <!-- LOGIN -->
+    <!-- ===================================== -->
+
     <section
             id="loginScreen"
             class="screen"
@@ -65,6 +75,7 @@
         <div class="login-card">
 
             <div class="brand">
+
                 <div class="brand-icon">
                     <img
                             src="./newfondo.png"
@@ -153,7 +164,10 @@
     </section>
 
 
+    <!-- ===================================== -->
     <!-- DASHBOARD -->
+    <!-- ===================================== -->
+
     <section
             id="dashboardScreen"
             class="screen hidden"
@@ -163,6 +177,7 @@
         <header class="topbar">
 
             <div>
+
                 <h1 id="dashboardTitle">
                     Bastón Inteligente
                 </h1>
@@ -170,6 +185,7 @@
                 <span class="device-name">
                     baston01
                 </span>
+
             </div>
 
             <button
@@ -183,6 +199,10 @@
         </header>
 
 
+        <!-- ================================= -->
+        <!-- SIMULADOR -->
+        <!-- ================================= -->
+
         <div
                 id="simulatorPanel"
                 class="simulator-panel hidden"
@@ -195,7 +215,8 @@
                 </strong>
 
                 <p>
-                    Los botones generan datos de prueba en Firebase.
+                    Los botones generan datos
+                    de prueba en Firebase.
                 </p>
 
             </div>
@@ -249,7 +270,10 @@
 
         <div class="dashboard-container">
 
-            <!-- ESTADO -->
+            <!-- ================================= -->
+            <!-- ESTADO DEL DISPOSITIVO -->
+            <!-- ================================= -->
+
             <section class="status-card card">
 
                 <div class="status-header">
@@ -261,7 +285,7 @@
                         </span>
 
                         <h2 id="connectionStatus">
-                            Sin conexión
+                            Sin datos recientes
                         </h2>
 
                     </div>
@@ -282,7 +306,10 @@
             </section>
 
 
+            <!-- ================================= -->
             <!-- GPS -->
+            <!-- ================================= -->
+
             <section
                     id="gpsWarning"
                     class="gps-warning card hidden"
@@ -293,13 +320,17 @@
                 </strong>
 
                 <p>
-                    El bastón no tiene una ubicación GPS válida.
+                    El bastón no tiene una
+                    ubicación GPS válida.
                 </p>
 
             </section>
 
 
+            <!-- ================================= -->
             <!-- MÉTRICAS -->
+            <!-- ================================= -->
+
             <section class="metrics-grid">
 
                 <article class="metric-card card">
@@ -318,9 +349,7 @@
                             --
                         </strong>
 
-                        <span>
-                            cm
-                        </span>
+                        <span>cm</span>
 
                     </div>
 
@@ -353,7 +382,10 @@
             </section>
 
 
+            <!-- ================================= -->
             <!-- MAPA -->
+            <!-- ================================= -->
+
             <section class="card">
 
                 <div class="section-heading">
@@ -396,7 +428,94 @@
             </section>
 
 
-            <!-- ALERTAS -->
+            <!-- ================================= -->
+            <!-- NUEVO: NOTIFICACIONES -->
+            <!-- ================================= -->
+
+            <section
+                    class="card"
+                    id="notificationsPanel"
+            >
+
+                <div class="section-heading">
+
+                    <div>
+
+                        <span class="section-label">
+                            Seguridad
+                        </span>
+
+                        <h2>
+                            Notificaciones de emergencia
+                        </h2>
+
+                    </div>
+
+                </div>
+
+                <p>
+                    Activa las notificaciones para
+                    recibir avisos de alertas SOS
+                    y posibles caídas.
+                </p>
+
+                <p
+                        id="notificationStatus"
+                        role="status"
+                        aria-live="polite"
+                        style="margin: 12px 0;"
+                >
+                    Comprobando permisos...
+                </p>
+
+                <div
+                        style="
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 10px;
+                        margin-top: 15px;
+                    "
+                >
+
+                    <button
+                            id="enableNotificationsButton"
+                            class="primary-button"
+                            type="button"
+                    >
+                        🔔 Activar notificaciones
+                    </button>
+
+                    <button
+                            id="testNotificationButton"
+                            class="secondary-button"
+                            type="button"
+                    >
+                        Probar notificación
+                    </button>
+
+                </div>
+
+                <p
+                        style="
+                        margin-top: 12px;
+                        font-size: 13px;
+                        opacity: 0.8;
+                    "
+                >
+                    Las notificaciones de prueba
+                    funcionan con permisos del navegador.
+                    Las alertas con la página cerrada
+                    requieren activar posteriormente
+                    las notificaciones push.
+                </p>
+
+            </section>
+
+
+            <!-- ================================= -->
+            <!-- ALERTAS RECIENTES -->
+            <!-- ================================= -->
+
             <section class="card">
 
                 <div class="section-heading">
@@ -433,6 +552,204 @@
     </section>
 
 </main>
+
+
+<!-- ===================================== -->
+<!-- LÓGICA DEL BOTÓN DE NOTIFICACIONES -->
+<!-- ===================================== -->
+
+<script>
+
+    (function () {
+
+        const enableButton =
+            document.getElementById(
+                "enableNotificationsButton"
+            );
+
+        const testButton =
+            document.getElementById(
+                "testNotificationButton"
+            );
+
+        const statusText =
+            document.getElementById(
+                "notificationStatus"
+            );
+
+        function updateStatus(message) {
+
+            statusText.textContent = message;
+        }
+
+        function supported() {
+
+            return (
+                window.isSecureContext &&
+                "Notification" in window &&
+                "serviceWorker" in navigator
+            );
+        }
+
+        function showPermissionStatus() {
+
+            if (!supported()) {
+
+                updateStatus(
+                    "Este navegador no admite las notificaciones necesarias."
+                );
+
+                return;
+            }
+
+            if (Notification.permission === "granted") {
+
+                updateStatus(
+                    "Notificaciones permitidas en este dispositivo."
+                );
+
+            } else if (
+                Notification.permission === "denied"
+            ) {
+
+                updateStatus(
+                    "Notificaciones bloqueadas. Actívalas desde los ajustes del navegador."
+                );
+
+            } else {
+
+                updateStatus(
+                    "Debes conceder permiso para recibir notificaciones."
+                );
+            }
+        }
+
+
+        /*
+         * Solicitar permiso únicamente
+         * después de pulsar el botón.
+         */
+        enableButton.addEventListener(
+            "click",
+            async () => {
+
+                if (!supported()) {
+
+                    showPermissionStatus();
+                    return;
+                }
+
+                try {
+
+                    const permission =
+                        await Notification.requestPermission();
+
+                    updateStatus(
+                        permission === "granted"
+                            ? "Notificaciones activadas correctamente."
+                            : "Permiso no concedido: " + permission
+                    );
+
+                } catch (error) {
+
+                    updateStatus(
+                        "Error solicitando permiso: " +
+                        error.message
+                    );
+                }
+            }
+        );
+
+
+        /*
+         * Mostrar una notificación de prueba.
+         */
+        testButton.addEventListener(
+            "click",
+            async () => {
+
+                if (!supported()) {
+
+                    showPermissionStatus();
+                    return;
+                }
+
+                if (Notification.permission !== "granted") {
+
+                    updateStatus(
+                        "Primero debes activar las notificaciones."
+                    );
+
+                    return;
+                }
+
+                try {
+
+                    let registration =
+                        await navigator.serviceWorker
+                            .getRegistration("./");
+
+                    if (!registration) {
+
+                        registration =
+                            await navigator.serviceWorker.register(
+                                "./sw.js",
+                                { scope: "./" }
+                            );
+                    }
+
+                    if (!registration.active) {
+
+                        registration =
+                            await navigator.serviceWorker.ready;
+                    }
+
+                    await registration.showNotification(
+                        "Smart Cane - Prueba",
+                        {
+                            body:
+                                "Las notificaciones de tu bastón inteligente funcionan.",
+
+                            icon:
+                                "./newfondo.png",
+
+                            badge:
+                                "./newfondo.png",
+
+                            tag:
+                                "smartcane-test-" +
+                                Date.now(),
+
+                            data: {
+                                url: new URL(
+                                    "./",
+                                    window.location.href
+                                ).href
+                            }
+                        }
+                    );
+
+                    updateStatus(
+                        "Notificación de prueba enviada al sistema."
+                    );
+
+                } catch (error) {
+
+                    console.error(error);
+
+                    updateStatus(
+                        "No se pudo mostrar la notificación: " +
+                        error.message
+                    );
+                }
+            }
+        );
+
+        showPermissionStatus();
+
+    })();
+
+</script>
 
 
 <!-- Firebase + aplicación -->

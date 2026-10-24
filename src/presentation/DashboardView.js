@@ -30,7 +30,7 @@ export class DashboardView {
         this.simulateSosButton = get("simulateSosButton");
         this.simulateGpsButton = get("simulateGpsButton");
 
-        // Elementos Bluetooth BLE.
+        // Bluetooth BLE.
         this.bluetoothButton = null;
         this.bluetoothStatus = null;
         this.bluetoothMessage = null;
@@ -38,21 +38,25 @@ export class DashboardView {
         this.bluetoothBound = false;
         this.simulatorBound = false;
 
+        // Estado del dispositivo desde Firebase.
+        this.lastDeviceStatus = null;
+        this.lastDeviceOnline = false;
+
         this.createBluetoothPanel();
     }
 
 
     /*
      * ========================================
-     * PANEL BLUETOOTH BLE
+     * CREAR PANEL BLUETOOTH
      * ========================================
-     *
-     * Se crea desde JavaScript para evitar
-     * modificar el HTML existente.
      */
     createBluetoothPanel() {
 
-        if (document.getElementById("bluetoothPanel")) {
+        const existing =
+            document.getElementById("bluetoothPanel");
+
+        if (existing) {
 
             this.bluetoothButton =
                 document.getElementById(
@@ -73,6 +77,7 @@ export class DashboardView {
         }
 
         const panel = document.createElement("section");
+
         panel.id = "bluetoothPanel";
 
         panel.style.cssText = `
@@ -86,6 +91,7 @@ export class DashboardView {
         `;
 
         const title = document.createElement("h3");
+
         title.textContent = "Bluetooth del bastón";
 
         title.style.cssText = `
@@ -94,8 +100,11 @@ export class DashboardView {
             color: #263238;
         `;
 
-        this.bluetoothStatus = document.createElement("p");
+        this.bluetoothStatus =
+            document.createElement("p");
+
         this.bluetoothStatus.id = "bluetoothStatus";
+
         this.bluetoothStatus.textContent =
             "Estado: Desconectado";
 
@@ -157,11 +166,6 @@ export class DashboardView {
             this.bluetoothMessage
         );
 
-        /*
-         * Colocar el panel cerca del mapa.
-         * Si no encuentra el botón del mapa,
-         * lo inserta al inicio del dashboard.
-         */
         if (
             this.centerMapButton &&
             this.centerMapButton.parentElement
@@ -176,22 +180,23 @@ export class DashboardView {
         } else if (this.screen) {
 
             this.screen.prepend(panel);
-
         }
     }
 
 
     /*
      * ========================================
-     * BOTÓN DE CONEXIÓN BLE
+     * BOTÓN CONECTAR BLUETOOTH
      * ========================================
      */
     bindBluetooth(callback) {
 
         if (!this.bluetoothButton) {
+
             console.error(
                 "No se encontró el botón Bluetooth."
             );
+
             return;
         }
 
@@ -203,7 +208,9 @@ export class DashboardView {
             "click",
             async () => {
 
-                this.updateBluetoothStatus("connecting");
+                this.updateBluetoothStatus(
+                    "connecting"
+                );
 
                 try {
 
@@ -216,10 +223,10 @@ export class DashboardView {
                         error
                     );
 
-                    this.updateBluetoothStatus("error");
-
+                    this.updateBluetoothStatus(
+                        "error"
+                    );
                 }
-
             }
         );
 
@@ -229,8 +236,11 @@ export class DashboardView {
 
     /*
      * ========================================
-     * ACTUALIZAR ESTADO BLUETOOTH
+     * ESTADO BLUETOOTH DEL ESP32
      * ========================================
+     *
+     * Este estado es independiente
+     * de Firebase status/lastSeen.
      */
     updateBluetoothStatus(status) {
 
@@ -267,7 +277,6 @@ export class DashboardView {
                 button: "Reintentar conexión",
                 disabled: false
             }
-
         };
 
         const selected =
@@ -289,14 +298,13 @@ export class DashboardView {
 
             this.bluetoothButton.style.opacity =
                 selected.disabled ? "0.65" : "1";
-
         }
     }
 
 
     /*
      * ========================================
-     * MOSTRAR MENSAJE BLE
+     * MOSTRAR MENSAJES DEL ESP32
      * ========================================
      */
     updateBluetoothMessage(message) {
@@ -308,42 +316,40 @@ export class DashboardView {
         this.bluetoothMessage.textContent =
             "Última señal BLE: " + message;
 
-        if (message === "SOS: Necesito ayuda") {
+        const isSos =
+            message === "SOS: Necesito ayuda";
 
-            this.bluetoothMessage.style.color =
-                "#c53030";
+        this.bluetoothMessage.style.color =
+            isSos ? "#c53030" : "#5f6875";
 
-            this.bluetoothMessage.style.fontWeight =
-                "bold";
-
-        } else {
-
-            this.bluetoothMessage.style.color =
-                "#5f6875";
-
-            this.bluetoothMessage.style.fontWeight =
-                "normal";
-        }
+        this.bluetoothMessage.style.fontWeight =
+            isSos ? "bold" : "normal";
     }
 
 
     /*
      * ========================================
-     * MOSTRAR Y OCULTAR DASHBOARD
+     * MOSTRAR DASHBOARD
      * ========================================
      */
     show() {
 
         this.screen.classList.remove("hidden");
-
     }
 
+
+    /*
+     * ========================================
+     * OCULTAR DASHBOARD
+     * ========================================
+     */
     hide() {
 
         this.screen.classList.add("hidden");
 
-        this.updateBluetoothStatus("disconnected");
-
+        this.updateBluetoothStatus(
+            "disconnected"
+        );
     }
 
 
@@ -354,30 +360,39 @@ export class DashboardView {
      */
     showSimulator() {
 
-        this.simulatorPanel.classList.remove("hidden");
-
+        this.simulatorPanel.classList.remove(
+            "hidden"
+        );
     }
 
 
     /*
      * ========================================
-     * ACTUALIZAR ESTADO DEL BASTÓN
+     * ACTUALIZAR ESTADO DEL DISPOSITIVO
      * ========================================
      *
-     * Este indicador sigue dependiendo
-     * del estado almacenado en Firebase.
-     * NO representa la conexión Bluetooth.
+     * isOnline representa datos recientes
+     * de status/lastSeen en Firebase.
+     *
+     * No representa la conexión BLE.
      */
     updateStatus(status, isOnline) {
 
+        this.lastDeviceStatus = status;
+        this.lastDeviceOnline = Boolean(isOnline);
+
+        /*
+         * Mostrar el estado real de los
+         * datos del dispositivo en Firebase.
+         */
         this.connectionStatus.textContent =
             isOnline
-                ? "En línea"
-                : "Sin conexión";
+                ? "Datos recientes"
+                : "Sin datos recientes del bastón";
 
         this.connectionIndicator.classList.toggle(
             "online",
-            isOnline
+            Boolean(isOnline)
         );
 
         this.connectionIndicator.classList.toggle(
@@ -385,10 +400,39 @@ export class DashboardView {
             !isOnline
         );
 
+        /*
+         * Si no existe estado en Firebase.
+         */
         if (!status) {
+
+            this.lastSeenText.textContent =
+                "Sin datos del dispositivo";
+
+            this.obstacleValue.textContent = "--";
+
+            this.fallValue.textContent =
+                "Sin datos recientes";
+
+            this.fallCard.classList.remove(
+                "fall-alert"
+            );
+
+            this.gpsWarning.classList.remove(
+                "hidden"
+            );
+
+            this.coordinatesText.textContent =
+                "Ubicación GPS no disponible";
+
             return;
         }
 
+
+        /*
+         * ========================================
+         * FECHA DEL ÚLTIMO REGISTRO
+         * ========================================
+         */
         if (status.lastSeen) {
 
             this.lastSeenText.textContent =
@@ -400,12 +444,24 @@ export class DashboardView {
 
             this.lastSeenText.textContent =
                 "Sin datos recientes";
-
         }
 
+
+        /*
+         * ========================================
+         * SENSOR DE OBSTÁCULOS
+         * ========================================
+         *
+         * No presentar lecturas antiguas
+         * como si fueran mediciones actuales.
+         */
         if (
+            !isOnline ||
             status.obstacleCm === null ||
-            status.obstacleCm === undefined
+            status.obstacleCm === undefined ||
+            !Number.isFinite(
+                Number(status.obstacleCm)
+            )
         ) {
 
             this.obstacleValue.textContent = "--";
@@ -413,11 +469,41 @@ export class DashboardView {
         } else {
 
             this.obstacleValue.textContent =
-                Number(status.obstacleCm).toFixed(0);
-
+                Number(
+                    status.obstacleCm
+                ).toFixed(0);
         }
 
-        if (status.fallDetected) {
+
+        /*
+         * ========================================
+         * DETECCIÓN DE CAÍDAS
+         * ========================================
+         *
+         * Una caída solo se muestra como
+         * activa cuando los datos de Firebase
+         * son recientes.
+         *
+         * No se borra el historial.
+         */
+        if (!isOnline) {
+
+            if (status.fallDetected === true) {
+
+                this.fallValue.textContent =
+                    "Registro anterior de caída";
+
+            } else {
+
+                this.fallValue.textContent =
+                    "Sin datos recientes";
+            }
+
+            this.fallCard.classList.remove(
+                "fall-alert"
+            );
+
+        } else if (status.fallDetected === true) {
 
             this.fallValue.textContent =
                 "DETECTADA";
@@ -434,34 +520,42 @@ export class DashboardView {
             this.fallCard.classList.remove(
                 "fall-alert"
             );
-
         }
 
+
+        /*
+         * ========================================
+         * UBICACIÓN DEL DISPOSITIVO
+         * ========================================
+         */
         const gpsAvailable =
+            isOnline &&
+            typeof status.hasLocation === "function" &&
             status.hasLocation();
 
         this.gpsWarning.classList.toggle(
             "hidden",
-            gpsAvailable
+            Boolean(gpsAvailable)
         );
 
         if (gpsAvailable) {
 
             this.coordinatesText.textContent =
-                `${status.lat.toFixed(6)}, ${status.lng.toFixed(6)}`;
+                `${status.lat.toFixed(6)}, ${
+                    status.lng.toFixed(6)
+                }`;
 
         } else {
 
             this.coordinatesText.textContent =
-                "Ubicación GPS no disponible";
-
+                "Sin ubicación reciente del bastón";
         }
     }
 
 
     /*
      * ========================================
-     * MOSTRAR ALERTAS
+     * RENDERIZAR ALERTAS
      * ========================================
      */
     renderAlerts(alerts, onAttend) {
@@ -536,6 +630,11 @@ export class DashboardView {
 
         article.appendChild(header);
 
+        /*
+         * ========================================
+         * ENLACE DE UBICACIÓN
+         * ========================================
+         */
         if (item.isLocated()) {
 
             const location =
@@ -545,7 +644,9 @@ export class DashboardView {
                 "alert-location";
 
             location.href =
-                `https://maps.google.com/?q=${item.lat},${item.lng}`;
+                `https://maps.google.com/?q=${
+                    item.lat
+                },${item.lng}`;
 
             location.target = "_blank";
 
@@ -562,8 +663,7 @@ export class DashboardView {
             const noGps =
                 document.createElement("span");
 
-            noGps.className =
-                "alert-time";
+            noGps.className = "alert-time";
 
             noGps.textContent =
                 "GPS sin señal";
@@ -571,6 +671,12 @@ export class DashboardView {
             article.appendChild(noGps);
         }
 
+
+        /*
+         * ========================================
+         * ALERTAS ATENDIDAS
+         * ========================================
+         */
         if (item.attended) {
 
             const attended =
@@ -616,8 +722,9 @@ export class DashboardView {
                         button.textContent =
                             "Marcar como atendida";
 
-                        window.alert(error.message);
-
+                        window.alert(
+                            error.message
+                        );
                     }
                 }
             );
@@ -631,7 +738,7 @@ export class DashboardView {
 
     /*
      * ========================================
-     * CERRAR SESIÓN
+     * BOTÓN CERRAR SESIÓN
      * ========================================
      */
     bindLogout(callback) {
@@ -645,7 +752,7 @@ export class DashboardView {
 
     /*
      * ========================================
-     * CENTRAR MAPA
+     * BOTÓN CENTRAR MAPA
      * ========================================
      */
     bindCenterMap(callback) {
@@ -659,7 +766,7 @@ export class DashboardView {
 
     /*
      * ========================================
-     * BOTONES DEL SIMULADOR
+     * SIMULADOR
      * ========================================
      */
     bindSimulator(callbacks) {
@@ -705,6 +812,7 @@ export class DashboardView {
     formatDate(timestamp) {
 
         if (!timestamp) {
+
             return "Hora no disponible";
         }
 

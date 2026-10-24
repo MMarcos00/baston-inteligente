@@ -38,10 +38,15 @@ async function startApplication() {
      * MODO NORMAL
      * ========================================
      *
-     * Firebase + GPS del teléfono + BLE.
+     * Firebase + GPS + Bluetooth + Telegram.
      */
     try {
 
+        /*
+         * ========================================
+         * FIREBASE
+         * ========================================
+         */
         const {
             FirebaseBootstrap
         } = await import(
@@ -60,6 +65,12 @@ async function startApplication() {
             "./infrastructure/firebase/FirebaseDeviceRepository.js"
             );
 
+
+        /*
+         * ========================================
+         * SERVICIOS DE APLICACIÓN
+         * ========================================
+         */
         const {
             AuthService
         } = await import(
@@ -91,10 +102,7 @@ async function startApplication() {
             );
 
         /*
-         * NUEVO: servicio Bluetooth BLE.
-         *
-         * Permitirá recibir notificaciones
-         * del ESP32 SmartCane.
+         * Bluetooth BLE del ESP32.
          */
         const {
             BluetoothService
@@ -102,12 +110,33 @@ async function startApplication() {
             "./application/BluetoothService.js"
             );
 
+        /*
+         * NUEVO: Telegram mediante Cloudflare.
+         */
+        const {
+            TelegramService
+        } = await import(
+            "./application/TelegramService.js"
+            );
+
+
+        /*
+         * ========================================
+         * MAPAS
+         * ========================================
+         */
         const {
             LeafletMapAdapter
         } = await import(
             "./infrastructure/map/LeafletMapAdapter.js"
             );
 
+
+        /*
+         * ========================================
+         * NOTIFICACIONES
+         * ========================================
+         */
         const {
             BrowserNotificationAdapter
         } = await import(
@@ -120,6 +149,12 @@ async function startApplication() {
             "./infrastructure/notifications/SoundNotificationAdapter.js"
             );
 
+
+        /*
+         * ========================================
+         * VISTAS Y CONTROLADOR
+         * ========================================
+         */
         const {
             LoginView
         } = await import(
@@ -206,10 +241,22 @@ async function startApplication() {
             new PhoneLocationService();
 
         /*
-         * NUEVO: Bluetooth del ESP32.
+         * Bluetooth BLE.
          */
         const bluetoothService =
             new BluetoothService();
+
+        /*
+         * NUEVO: Telegram.
+         *
+         * Utiliza el repositorio de
+         * autenticación para obtener un
+         * ID Token de Firebase.
+         */
+        const telegramService =
+            new TelegramService(
+                authRepository
+            );
 
 
         /*
@@ -265,8 +312,10 @@ async function startApplication() {
 
                 phoneLocationService,
 
-                // NUEVO: Servicio Bluetooth BLE
-                bluetoothService
+                bluetoothService,
+
+                // NUEVO: servicio de Telegram.
+                telegramService
 
             });
 
@@ -283,7 +332,11 @@ async function startApplication() {
         );
 
         console.log(
-            "Servicio Bluetooth BLE disponible."
+            "Bluetooth BLE disponible."
+        );
+
+        console.log(
+            "Servicio Telegram inicializado."
         );
 
 
@@ -302,7 +355,8 @@ async function startApplication() {
         if (loginError) {
 
             loginError.textContent =
-                "No se pudo iniciar la aplicación. Revisa la configuración de Firebase.";
+                "No se pudo iniciar la aplicación. " +
+                "Revisa la configuración.";
 
             loginError.classList.remove(
                 "hidden"
