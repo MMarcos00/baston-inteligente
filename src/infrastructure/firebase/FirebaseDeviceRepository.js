@@ -1,3 +1,4 @@
+
 import {
     ref,
     query,
@@ -26,17 +27,20 @@ export class FirebaseDeviceRepository {
 
         this.devicePath =
             `devices/${DEVICE_ID}`;
-
     }
 
 
+    /*
+     * ==========================================
+     * ESTADO DEL BASTÓN
+     * ==========================================
+     */
     subscribeToStatus(callback, onError) {
 
-        const statusRef =
-            ref(
-                this.database,
-                `${this.devicePath}/status`
-            );
+        const statusRef = ref(
+            this.database,
+            `${this.devicePath}/status`
+        );
 
         return onValue(
             statusRef,
@@ -47,14 +51,17 @@ export class FirebaseDeviceRepository {
                         ? snapshot.val()
                         : null
                 );
-
             },
             onError
         );
-
     }
 
 
+    /*
+     * ==========================================
+     * HISTORIAL DE UBICACIONES
+     * ==========================================
+     */
     subscribeToHistory(callback, onError) {
 
         const historyRef = query(
@@ -78,18 +85,28 @@ export class FirebaseDeviceRepository {
                         id: child.key,
                         ...child.val()
                     });
-
                 });
 
                 callback(points);
-
             },
             onError
         );
-
     }
 
 
+    /*
+     * ==========================================
+     * ESCUCHAR ALERTAS DE FIREBASE
+     * ==========================================
+     *
+     * Las alertas incluyen:
+     *
+     * - ID
+     * - Tipo
+     * - Coordenadas
+     * - Fecha
+     * - Estado de atención
+     */
     subscribeToAlerts(callback, onError) {
 
         const alertsRef = query(
@@ -113,7 +130,6 @@ export class FirebaseDeviceRepository {
                         id: child.key,
                         ...child.val()
                     });
-
                 });
 
                 alerts.sort(
@@ -123,21 +139,23 @@ export class FirebaseDeviceRepository {
                 );
 
                 callback(alerts);
-
             },
             onError
         );
-
     }
 
 
+    /*
+     * ==========================================
+     * OBTENER ESTADO ACTUAL
+     * ==========================================
+     */
     async getStatus() {
 
-        const statusRef =
-            ref(
-                this.database,
-                `${this.devicePath}/status`
-            );
+        const statusRef = ref(
+            this.database,
+            `${this.devicePath}/status`
+        );
 
         const snapshot =
             await get(statusRef);
@@ -145,17 +163,20 @@ export class FirebaseDeviceRepository {
         return snapshot.exists()
             ? snapshot.val()
             : null;
-
     }
 
 
+    /*
+     * ==========================================
+     * ACTUALIZAR ESTADO DEL BASTÓN
+     * ==========================================
+     */
     async writeStatus(status) {
 
-        const statusRef =
-            ref(
-                this.database,
-                `${this.devicePath}/status`
-            );
+        const statusRef = ref(
+            this.database,
+            `${this.devicePath}/status`
+        );
 
         await set(
             statusRef,
@@ -168,17 +189,20 @@ export class FirebaseDeviceRepository {
                 lastSeen: serverTimestamp()
             }
         );
-
     }
 
 
+    /*
+     * ==========================================
+     * GUARDAR HISTORIAL DEL BASTÓN
+     * ==========================================
+     */
     async writeHistory(point) {
 
-        const historyRef =
-            ref(
-                this.database,
-                `${this.devicePath}/history`
-            );
+        const historyRef = ref(
+            this.database,
+            `${this.devicePath}/history`
+        );
 
         const newPointRef =
             push(historyRef);
@@ -193,17 +217,36 @@ export class FirebaseDeviceRepository {
         );
 
         return newPointRef.key;
-
     }
 
 
+    /*
+     * ==========================================
+     * CREAR ALERTA SOS O CAÍDA
+     * ==========================================
+     *
+     * Solo la cuenta del bastón tiene
+     * permisos para crear emergencias.
+     *
+     * Conservamos la misma estructura
+     * para no afectar Telegram.
+     */
     async createAlert(alert) {
 
-        const alertsRef =
-            ref(
-                this.database,
-                `${this.devicePath}/alerts`
+        if (
+            !alert ||
+            !["sos", "fall"].includes(alert.type)
+        ) {
+
+            throw new Error(
+                "Tipo de alerta inválido."
             );
+        }
+
+        const alertsRef = ref(
+            this.database,
+            `${this.devicePath}/alerts`
+        );
 
         const newAlertRef =
             push(alertsRef);
@@ -222,60 +265,143 @@ export class FirebaseDeviceRepository {
         );
 
         return newAlertRef.key;
-
     }
 
+
+    /*
+     * ==========================================
+     * MARCAR ALERTA COMO ATENDIDA
+     * ==========================================
+     *
+     * IMPORTANTE:
+     *
+     * Solo modifica:
+     *
+     * - attended
+     * - attendedAt
+     *
+     * No cambia:
+     *
+     * - type
+     * - lat
+     * - lng
+     * - gpsFix
+     * - createdAt
+     *
+     * Utiliza una actualización multipath
+     * atómica para que Firebase compruebe
+     * los permisos de las rutas afectadas.
+     */
 
     async markAlertAsAttended(alertId) {
 
-        const alertRef =
-            ref(
-                this.database,
-                `${this.devicePath}/alerts/${alertId}`
-            );
+        if (
+            typeof alertId !== "string" ||
+            !/^[A-Za-z0-9_-]{10,100}$/.test(alertId)
+        ) {
+            throw new Error("ID de alerta inválido.");
+        }
 
-        await update(
-            alertRef,
-            {
-                attended: true,
-                attendedAt: serverTimestamp()
-            }
+        const alertRef = ref(
+            this.database,
+            `${this.devicePath}/alerts/${alertId}`
         );
 
+        const snapshot = await get(alertRef);
+
+        if (!snapshot.exists()) {
+            throw new Error("La alerta no existe.");
+        }
+
+        if (snapshot.val().attended === true) {
+            return;
+        }
+
+        // Registrar primero la hora de atención.
+        await set(
+            ref(
+                this.database,
+                `${this.devicePath}/alerts/${alertId}/attendedAt`
+            ),
+            serverTimestamp()
+        );
+
+        // Marcar la emergencia como atendida.
+        await set(
+            ref(
+                this.database,
+                `${this.devicePath}/alerts/${alertId}/attended`
+            ),
+            true
+        );
+
+        console.log("Alerta atendida:", alertId);
     }
 
+
+
+    /*
+     * ==========================================
+     * GPS DEL TELÉFONO
+     * ==========================================
+     */
     async writePhoneLocation(location) {
+
         const locationRef = ref(
             this.database,
             `${this.devicePath}/phoneLocation/current`
         );
 
-        await set(locationRef, {
-            lat: location.lat,
-            lng: location.lng,
-            accuracy: location.accuracy,
-            gpsFix: location.gpsFix,
-            updatedAt: serverTimestamp()
-        });
+        await set(
+            locationRef,
+            {
+                lat: location.lat,
+                lng: location.lng,
+                accuracy: location.accuracy,
+                gpsFix: location.gpsFix,
+                updatedAt: serverTimestamp()
+            }
+        );
     }
 
+
+    /*
+     * ==========================================
+     * HISTORIAL GPS DEL TELÉFONO
+     * ==========================================
+     */
     async writePhoneLocationHistory(location) {
+
         const historyRef = ref(
             this.database,
             `${this.devicePath}/phoneLocation/history`
         );
 
-        const newRecord = push(historyRef);
+        const newRecord =
+            push(historyRef);
 
-        await set(newRecord, {
-            lat: location.lat,
-            lng: location.lng,
-            accuracy: location.accuracy,
-            ts: serverTimestamp()
-        });
+        await set(
+            newRecord,
+            {
+                lat: location.lat,
+                lng: location.lng,
+                accuracy: location.accuracy,
+                ts: serverTimestamp()
+            }
+        );
     }
 
-    subscribeToPhoneLocation(callback, onError) {
+
+    /*
+     * ==========================================
+     * ESCUCHAR GPS DEL TELÉFONO
+     * ==========================================
+     */
+    subscribeToPhoneLocation(
+        callback,
+        onError
+    ) {
+
         const locationRef = ref(
             this.database,
             `${this.devicePath}/phoneLocation/current`
@@ -283,10 +409,15 @@ export class FirebaseDeviceRepository {
 
         return onValue(
             locationRef,
-            (snapshot) => callback(snapshot.val()),
+            (snapshot) => {
+
+                callback(
+                    snapshot.exists()
+                        ? snapshot.val()
+                        : null
+                );
+            },
             onError
         );
     }
-
-
 }
