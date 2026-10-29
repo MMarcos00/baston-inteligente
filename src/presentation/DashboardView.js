@@ -4,22 +4,19 @@
  * SMARTCANE - DASHBOARD VIEW
  * ============================================
  *
- * Compatible con:
+ * Interfaz del bastón y del cuidador.
  *
- * - ESP32 Bluetooth BLE.
- * - Sensor ultrasónico.
- * - MPU6050 (alertas de posibles caídas).
- * - Botón SOS físico.
- * - Firebase Realtime Database.
- * - Ubicación GPS del teléfono.
- * - Panel del bastón y del cuidador.
+ * - Estado de monitoreo
+ * - Conexión Bluetooth BLE
+ * - GPS y mapa
+ * - Posibles caídas MPU6050
+ * - Alertas SOS
+ * - Historial
+ * - Notificaciones
+ * - Simulador
  *
- * El ESP32 no necesita modificaciones.
- *
- * IMPORTANTE:
- * El firmware actual transmite eventos SOS y
- * posibles caídas, pero no transmite valores
- * numéricos del MPU6050 ni distancias por BLE.
+ * Se oculta la tarjeta visual del sensor
+ * de obstáculos, sin alterar el ESP32.
  */
 
 export class DashboardView {
@@ -41,22 +38,12 @@ export class DashboardView {
         this.gpsWarning = get("gpsWarning");
         this.obstacleValue = get("obstacleValue");
         this.fallValue = get("fallValue");
-        // Ocultar tarjeta visual del sensor de obstáculos.
-        const obstacleCard = this.obstacleValue?.closest(
-            ".sc-card"
-        );
-
-        if (obstacleCard && obstacleCard !== this.screen) {
-            obstacleCard.hidden = true;
-            obstacleCard.style.display = "none";
-        }
         this.fallCard = get("fallCard");
         this.coordinatesText = get("coordinatesText");
 
         // Alertas.
         this.alertsList = get("alertsList");
         this.historyAlertsList = get("historyAlertsList");
-
         this.pendingAlertCount = get("pendingAlertCount");
 
         this.pendingAlertCountSecondary =
@@ -98,7 +85,7 @@ export class DashboardView {
         // Notificaciones.
         this.notificationsPanel = get("notificationsPanel");
 
-        // Pestañas del cuidador.
+        // Pestañas.
         this.tabPanels = {
             inicio: get("scPanelInicio"),
             mapa: get("scPanelMapa"),
@@ -116,14 +103,14 @@ export class DashboardView {
         this.bluetoothConnected = false;
         this.bluetoothBound = false;
 
-        // Control de enlaces del simulador.
+        // Simulador.
         this.simulatorBound = false;
 
-        // Estado general de Firebase.
+        // Estado Firebase.
         this.lastDeviceStatus = null;
         this.lastDeviceOnline = false;
 
-        // Ubicación GPS del teléfono.
+        // GPS del teléfono.
         this.phoneLocation = null;
         this.phoneLocationAt = 0;
 
@@ -134,7 +121,7 @@ export class DashboardView {
         this.pendingFall = false;
         this.currentAlerts = [];
 
-        // Información visual del MPU6050.
+        // Panel MPU6050.
         this.mpuPanel = null;
         this.mpuStatus = null;
         this.mpuLastEvent = null;
@@ -142,6 +129,11 @@ export class DashboardView {
         // Mapa.
         this.mapAdapter = null;
 
+        // Referencia a tarjeta oculta.
+        this.obstacleCard = null;
+
+        // Inicialización.
+        this.hideObstacleCard();
         this.createBluetoothPanel();
         this.createMPUPanel();
         this.configureTabs();
@@ -149,7 +141,89 @@ export class DashboardView {
 
     /*
      * ============================================
-     * CONFIGURAR PESTAÑAS DEL CUIDADOR
+     * OCULTAR TARJETA DE OBSTÁCULOS
+     * ============================================
+     *
+     * Busca el contenedor visual que incluye
+     * el valor obstacleValue y el título
+     * "Sensor de obstáculos".
+     *
+     * No depende de una clase CSS específica.
+     *
+     * Nunca oculta la tarjeta de caídas,
+     * el panel principal ni el dashboard.
+     */
+
+    hideObstacleCard() {
+
+        if (!this.obstacleValue) {
+            return;
+        }
+
+        let element = this.obstacleValue.parentElement;
+        let candidate = null;
+
+        while (
+            element &&
+            element !== this.screen &&
+            element !== document.body
+            ) {
+
+            // No subir hasta un contenedor general.
+            if (
+                (this.fallValue &&
+                    element.contains(this.fallValue)) ||
+                (this.connectionStatus &&
+                    element.contains(this.connectionStatus))
+            ) {
+                break;
+            }
+
+            const text = element.textContent || "";
+
+            // Debe contener el título y el valor.
+            if (
+                element.contains(this.obstacleValue) &&
+                /Sensor de obstáculos/i.test(text)
+            ) {
+                candidate = element;
+            }
+
+            element = element.parentElement;
+        }
+
+        if (!candidate) {
+
+            console.warn(
+                "No se encontró la tarjeta completa del sensor de obstáculos."
+            );
+
+            return;
+        }
+
+        this.obstacleCard = candidate;
+
+        candidate.hidden = true;
+
+        candidate.style.setProperty(
+            "display",
+            "none",
+            "important"
+        );
+
+        candidate.setAttribute(
+            "aria-hidden",
+            "true"
+        );
+
+        console.log(
+            "Tarjeta de obstáculos ocultada."
+        );
+    }
+
+    /*
+     * ============================================
+     * CONFIGURAR PESTAÑAS
      * ============================================
      */
 
@@ -240,7 +314,6 @@ export class DashboardView {
                     typeof this.mapAdapter.invalidateSize ===
                     "function"
                 ) {
-
                     this.mapAdapter.invalidateSize();
                 }
 
@@ -341,9 +414,7 @@ export class DashboardView {
             "connectBluetoothButton";
 
         this.bluetoothButton.type = "button";
-
-        this.bluetoothButton.className =
-            "primary-button";
+        this.bluetoothButton.className = "primary-button";
 
         this.bluetoothButton.textContent =
             "Conectar SmartCane";
@@ -399,12 +470,6 @@ export class DashboardView {
      * ============================================
      * PANEL INFORMATIVO MPU6050
      * ============================================
-     *
-     * El sensor funciona dentro del ESP32.
-     * La página no recibe sus mediciones.
-     *
-     * Aquí mostramos únicamente las alertas
-     * de caída registradas en Firebase.
      */
 
     createMPUPanel() {
@@ -423,7 +488,6 @@ export class DashboardView {
                 document.createElement("section");
 
             this.mpuPanel.id = "scMPUPanel";
-
             this.mpuPanel.className = "sc-card";
 
             this.mpuPanel.style.cssText = `
@@ -501,7 +565,7 @@ export class DashboardView {
 
     /*
      * ============================================
-     * ACTUALIZAR ESTADO INFORMATIVO DEL MPU
+     * ACTUALIZAR INFORMACIÓN MPU6050
      * ============================================
      */
 
@@ -563,7 +627,7 @@ export class DashboardView {
 
     /*
      * ============================================
-     * ENLAZAR BOTÓN BLUETOOTH
+     * BOTÓN CONECTAR BLUETOOTH
      * ============================================
      */
 
@@ -614,7 +678,7 @@ export class DashboardView {
 
     /*
      * ============================================
-     * ESTADO BLUETOOTH
+     * ACTUALIZAR ESTADO BLUETOOTH
      * ============================================
      */
 
@@ -681,7 +745,7 @@ export class DashboardView {
 
     /*
      * ============================================
-     * MOSTRAR MENSAJES BLE
+     * MOSTRAR MENSAJES DEL ESP32
      * ============================================
      */
 
@@ -696,8 +760,7 @@ export class DashboardView {
         this.bluetoothMessage.textContent =
             "Última señal BLE: " + text;
 
-        const isSOS =
-            /SOS/i.test(text);
+        const isSOS = /SOS/i.test(text);
 
         const isFall =
             /caida|caída|fall/i.test(text);
@@ -727,6 +790,9 @@ export class DashboardView {
         this.screen?.classList.remove(
             "hidden"
         );
+
+        // Garantizar que siga oculta.
+        this.hideObstacleCard();
     }
 
     /*
@@ -811,14 +877,12 @@ export class DashboardView {
             );
         }
 
-        // Bluetooth solo para el bastón.
         if (this.bluetoothPanel) {
 
             this.bluetoothPanel.hidden =
                 this.isCaregiver;
         }
 
-        // Información del MPU en la vista del bastón.
         if (this.mpuPanel) {
 
             this.mpuPanel.hidden =
@@ -849,6 +913,8 @@ export class DashboardView {
             }
         }
 
+        this.hideObstacleCard();
+
         this.refreshCombinedStatus();
     }
 
@@ -870,7 +936,7 @@ export class DashboardView {
 
     /*
      * ============================================
-     * GUARDAR GPS DEL TELÉFONO
+     * GUARDAR UBICACIÓN DEL TELÉFONO
      * ============================================
      */
 
@@ -880,32 +946,21 @@ export class DashboardView {
     ) {
 
         const valid = Boolean(
-
             location &&
-
             location.gpsFix === true &&
-
             Number.isFinite(location.lat) &&
-
             Number.isFinite(location.lng) &&
-
             location.lat >= -90 &&
-
             location.lat <= 90 &&
-
             location.lng >= -180 &&
-
             location.lng <= 180
         );
 
         if (valid) {
 
             this.phoneLocation = {
-
                 lat: location.lat,
-
                 lng: location.lng,
-
                 gpsFix: true
             };
 
@@ -915,7 +970,6 @@ export class DashboardView {
         } else {
 
             this.phoneLocation = null;
-
             this.phoneLocationAt = 0;
         }
 
@@ -924,7 +978,7 @@ export class DashboardView {
 
     /*
      * ============================================
-     * ESTADO DE CAÍDA PENDIENTE
+     * REGISTRAR CAÍDA PENDIENTE
      * ============================================
      */
 
@@ -944,27 +998,21 @@ export class DashboardView {
 
     refreshCombinedStatus() {
 
-        const status =
-            this.lastDeviceStatus;
-
+        const status = this.lastDeviceStatus;
         const now = Date.now();
 
         const recentDevice =
             this.lastDeviceOnline;
 
         const gpsRecent = Boolean(
-
             this.phoneLocation &&
-
             this.phoneLocationAt > 0 &&
-
             now - this.phoneLocationAt <= 60000 &&
-
             this.phoneLocationAt <= now + 10000
         );
 
         /*
-         * Estado de conexión.
+         * ESTADO DE MONITOREO.
          */
 
         let connectionText =
@@ -996,11 +1044,8 @@ export class DashboardView {
         }
 
         const visuallyOnline = Boolean(
-
             recentDevice ||
-
             gpsRecent ||
-
             (
                 this.bluetoothConnected &&
                 !this.isCaregiver
@@ -1018,7 +1063,7 @@ export class DashboardView {
         );
 
         /*
-         * Última actualización.
+         * ÚLTIMA ACTUALIZACIÓN.
          */
 
         if (this.lastSeenText) {
@@ -1030,9 +1075,7 @@ export class DashboardView {
 
                 this.lastSeenText.textContent =
                     "Último dato del bastón: " +
-                    this.formatDate(
-                        status.lastSeen
-                    );
+                    this.formatDate(status.lastSeen);
 
             } else if (gpsRecent) {
 
@@ -1046,9 +1089,7 @@ export class DashboardView {
 
                 this.lastSeenText.textContent =
                     "Último registro: " +
-                    this.formatDate(
-                        status.lastSeen
-                    ) +
+                    this.formatDate(status.lastSeen) +
                     " (antiguo)";
 
             } else {
@@ -1059,36 +1100,7 @@ export class DashboardView {
         }
 
         /*
-         * Sensor ultrasónico.
-         *
-         * Solo mostrar mediciones recientes
-         * si existen en Firebase.
-         */
-
-        if (this.obstacleValue) {
-
-            const value =
-                status?.obstacleCm;
-
-            if (
-                recentDevice &&
-                value !== null &&
-                value !== undefined &&
-                Number.isFinite(Number(value))
-            ) {
-
-                this.obstacleValue.textContent =
-                    Number(value).toFixed(0);
-
-            } else {
-
-                this.obstacleValue.textContent =
-                    "--";
-            }
-        }
-
-        /*
-         * Posibles caídas.
+         * POSIBLES CAÍDAS.
          */
 
         if (this.fallValue) {
@@ -1105,18 +1117,14 @@ export class DashboardView {
         );
 
         /*
-         * GPS disponible.
+         * GPS DEL TELÉFONO O DEL DISPOSITIVO.
          */
 
         const deviceGPS = Boolean(
-
             recentDevice &&
-
             status &&
-
             typeof status.hasLocation ===
             "function" &&
-
             status.hasLocation()
         );
 
@@ -1151,23 +1159,28 @@ export class DashboardView {
                     "Sin ubicación GPS reciente";
             }
         }
+
+        // Mantener oculta la tarjeta obsoleta.
+        if (
+            this.obstacleCard &&
+            !this.obstacleCard.hidden
+        ) {
+
+            this.hideObstacleCard();
+        }
     }
 
     /*
      * ============================================
      * RENDERIZAR ALERTAS
      * ============================================
-     *
-     * Alertas SOS y caídas registradas
-     * en Firebase Realtime Database.
      */
 
     renderAlerts(alerts, onAttend) {
 
-        const records =
-            Array.isArray(alerts)
-                ? alerts
-                : [];
+        const records = Array.isArray(alerts)
+            ? alerts
+            : [];
 
         this.currentAlerts = records;
 
@@ -1180,7 +1193,7 @@ export class DashboardView {
         );
 
         /*
-         * Detectar posibles caídas pendientes.
+         * Actualizar caídas pendientes.
          */
 
         this.setPendingFall(
@@ -1192,7 +1205,7 @@ export class DashboardView {
         this.updateMPUStatus();
 
         /*
-         * Contadores.
+         * CONTADORES.
          */
 
         if (this.pendingAlertCount) {
@@ -1213,7 +1226,7 @@ export class DashboardView {
         }
 
         /*
-         * Alertas pendientes.
+         * ALERTAS PENDIENTES.
          */
 
         if (this.alertsList) {
@@ -1230,9 +1243,7 @@ export class DashboardView {
                 empty.textContent =
                     "No hay emergencias pendientes.";
 
-                this.alertsList.appendChild(
-                    empty
-                );
+                this.alertsList.appendChild(empty);
 
             } else {
 
@@ -1257,7 +1268,7 @@ export class DashboardView {
         }
 
         /*
-         * Historial de alertas atendidas.
+         * HISTORIAL.
          */
 
         if (this.historyAlertsList) {
@@ -1317,7 +1328,7 @@ export class DashboardView {
             );
 
         /*
-         * Título y fecha.
+         * TÍTULO Y FECHA.
          */
 
         const header =
@@ -1352,7 +1363,7 @@ export class DashboardView {
         article.appendChild(header);
 
         /*
-         * Descripción del tipo de alerta.
+         * DESCRIPCIÓN.
          */
 
         const description =
@@ -1370,7 +1381,7 @@ export class DashboardView {
         article.appendChild(description);
 
         /*
-         * Ubicación GPS.
+         * UBICACIÓN.
          */
 
         const locationRow =
@@ -1415,8 +1426,7 @@ export class DashboardView {
 
             link.target = "_blank";
 
-            link.rel =
-                "noopener noreferrer";
+            link.rel = "noopener noreferrer";
 
             link.textContent =
                 "📍 Ver lugar de la alerta";
@@ -1442,7 +1452,7 @@ export class DashboardView {
         article.appendChild(locationRow);
 
         /*
-         * Estado de atención.
+         * ESTADO DE ATENCIÓN.
          */
 
         if (item.attended === true) {
