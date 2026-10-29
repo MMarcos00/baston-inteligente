@@ -36,7 +36,7 @@ export class AppController {
             telegramService
         });
 
-        // Firebase.
+        // Firebase y monitoreo.
         this.unsubscribers = [];
         this.currentDeviceStatus = null;
         this.statusTimer = null;
@@ -45,11 +45,12 @@ export class AppController {
         // Simulador.
         this.simulatorBound = false;
 
-        // GPS del teléfono.
+        // Ubicación GPS del teléfono Android.
         this.phoneLocationReceived = false;
         this.lastPhoneHistoryAt = 0;
         this.lastPhoneLocation = null;
         this.lastPhoneLocationAt = 0;
+
         this.gpsEnabled = false;
         this.gpsRefreshTimer = null;
         this.gpsRefreshInProgress = false;
@@ -58,7 +59,7 @@ export class AppController {
         this.bluetoothConnecting = false;
         this.lastBleMessage = null;
 
-        // Alertas.
+        // Emergencias.
         this.sosProcessing = false;
         this.lastSosAt = 0;
         this.lastEmergencyType = null;
@@ -98,6 +99,7 @@ export class AppController {
             this.phoneLocationService?.stop();
 
             if (!user) {
+
                 this.showLogin();
                 return;
             }
@@ -182,12 +184,12 @@ export class AppController {
             this.isCaregiver
         );
 
-        // Notificaciones solo para cuidador.
+        // Avisos solo para el cuidador.
         this.alertService.setNotificationsEnabled(
             this.isCaregiver
         );
 
-        // Limpiar información anterior.
+        // Reiniciar información visual.
         this.dashboardView.setPhoneLocation(null);
         this.dashboardView.setPendingFall(false);
 
@@ -203,7 +205,7 @@ export class AppController {
             false
         );
 
-        // Inicializar mapa.
+        // Inicializar el mapa.
         this.mapAdapter.initialize();
 
         setTimeout(() => {
@@ -212,15 +214,16 @@ export class AppController {
                 this.sessionActive &&
                 version === this.sessionVersion
             ) {
+
                 this.mapAdapter.invalidateSize();
             }
 
         }, 100);
 
-        // Suscripciones Firebase.
+        // Escuchar Firebase.
         this.startSubscriptions();
 
-        // Monitor cada 15 segundos.
+        // Comprobar estado periódicamente.
         this.startStatusMonitor();
 
         const params = new URLSearchParams(
@@ -229,21 +232,32 @@ export class AppController {
 
         /*
          * ==========================================
-         * GPS DEL TELÉFONO ANDROID
+         * GPS AUTOMÁTICO DEL TELÉFONO
          * ==========================================
          *
-         * Solamente la cuenta del bastón.
-         * Requiere ?gps=1.
+         * NUEVO:
+         *
+         * Ya no es necesario ?gps=1.
+         *
+         * La cuenta del bastón inicia
+         * automáticamente el monitoreo GPS.
+         *
+         * La cuenta del cuidador solamente
+         * consulta las coordenadas de Firebase.
          */
 
         this.gpsEnabled = Boolean(
             this.isDeviceUser &&
-            params.get("gps") === "1" &&
             this.phoneLocationService
         );
 
         if (this.gpsEnabled) {
 
+            console.log(
+                "SmartCane: iniciando GPS automático."
+            );
+
+            // Escuchar cambios de ubicación.
             this.phoneLocationService.start(
 
                 (location) => {
@@ -260,10 +274,14 @@ export class AppController {
                         "Error del GPS:",
                         message
                     );
+
+                    this.dashboardView.updateBluetoothMessage(
+                        "GPS: " + message
+                    );
                 }
             );
 
-            // Actualización periódica de GPS.
+            // Solicitar ubicaciones periódicamente.
             this.startGPSRefresh(version);
         }
 
@@ -271,6 +289,8 @@ export class AppController {
          * ==========================================
          * SIMULADOR
          * ==========================================
+         *
+         * Sigue disponible usando ?sim=1.
          */
 
         if (
@@ -309,12 +329,23 @@ export class AppController {
                 ? "connected"
                 : "disconnected"
         );
+
+        if (connected) {
+
+            void this.sendBluetoothHeartbeat();
+        }
     }
 
     /*
      * ==========================================
-     * RECIBIR GPS DEL TELÉFONO
+     * RECIBIR UBICACIÓN DEL TELÉFONO
      * ==========================================
+     *
+     * 1. Validar sesión y coordenadas.
+     * 2. Actualizar interfaz.
+     * 3. Actualizar mapa local.
+     * 4. Guardar ubicación en Firebase.
+     * 5. Registrar historial cada 30 segundos.
      */
 
     async handlePhoneLocation(location, version) {
@@ -322,95 +353,173 @@ export class AppController {
         if (
             !this.sessionActive ||
             !this.isDeviceUser ||
+            !this.gpsEnabled ||
             version !== this.sessionVersion
         ) {
+
             return;
         }
 
         if (!this.isValidLocation(location)) {
+
+            console.warn(
+                "SmartCane: ubicación GPS inválida.",
+                location
+            );
+
             return;
         }
 
-        this.lastPhoneLocation = {
+        const normalizedLocation = {
+
             lat: location.lat,
+
             lng: location.lng,
+
             gpsFix: true,
+
             accuracy: Number.isFinite(location.accuracy)
                 ? Math.max(0, location.accuracy)
                 : 0
         };
 
-        this.lastPhoneLocationAt = Date.now();
+        this.lastPhoneLocation =
+            normalizedLocation;
 
-        // Actualización visual inmediata.
+        this.lastPhoneLocationAt =
+            Date.now();
+
+        /*
+         * Actualizar información GPS local.
+         */
+
         this.dashboardView.setPhoneLocation(
-            this.lastPhoneLocation,
+            normalizedLocation,
             this.lastPhoneLocationAt
         );
 
+        /*
+         * Actualizar marcador del mapa.
+         */
+
         this.mapAdapter.updateLocation(
-            location.lat,
-            location.lng
+            normalizedLocation.lat,
+            normalizedLocation.lng
         );
+
+        console.log(
+            "SmartCane: nueva ubicación GPS:",
+            normalizedLocation
+        );
+
+        /*
+         * Guardar posición en Firebase.
+         */
 
         try {
 
             await this.deviceService.writePhoneLocation(
-                this.lastPhoneLocation
+                normalizedLocation
             );
 
-            const now = Date.now();
-
-            if (
-                now - this.lastPhoneHistoryAt >= 30000
-            ) {
-
-                await this.deviceService
-                    .writePhoneLocationHistory(
-                        this.lastPhoneLocation
-                    );
-
-                this.lastPhoneHistoryAt = now;
-            }
+            console.log(
+                "Ubicación GPS guardada en Firebase."
+            );
 
         } catch (error) {
 
             console.error(
-                "Error guardando GPS en Firebase:",
+                "Error guardando ubicación GPS:",
                 error
             );
+
+            return;
+        }
+
+        /*
+         * Registrar historial cada 30 segundos.
+         */
+
+        const now = Date.now();
+
+        if (
+            now - this.lastPhoneHistoryAt >= 30000
+        ) {
+
+            // Reservar el intervalo antes de escribir
+            // para evitar registros simultáneos.
+            this.lastPhoneHistoryAt = now;
+
+            try {
+
+                await this.deviceService
+                    .writePhoneLocationHistory(
+                        normalizedLocation
+                    );
+
+            } catch (error) {
+
+                console.error(
+                    "Error guardando historial GPS:",
+                    error
+                );
+
+                this.lastPhoneHistoryAt = 0;
+            }
         }
     }
 
     /*
      * ==========================================
-     * ACTUALIZAR GPS PERIÓDICAMENTE
+     * ACTUALIZACIÓN PERIÓDICA DEL GPS
      * ==========================================
      *
-     * Permite volver a solicitar coordenadas
-     * incluso cuando el teléfono está quieto.
+     * CORRECCIÓN:
+     *
+     * No llamar stopGPSRefresh() aquí,
+     * porque esa función también desactiva
+     * gpsEnabled.
+     *
+     * Solicitar ubicación al iniciar y
+     * repetir aproximadamente cada 30 segundos.
      */
 
     startGPSRefresh(version) {
 
-        this.stopGPSRefresh();
+        // Eliminar solamente el intervalo anterior.
+        if (this.gpsRefreshTimer !== null) {
+
+            clearInterval(
+                this.gpsRefreshTimer
+            );
+
+            this.gpsRefreshTimer = null;
+        }
 
         if (!this.gpsEnabled) {
+
             return;
         }
 
-        this.gpsRefreshTimer = setInterval(() => {
+        const refreshLocation = () => {
 
             if (
                 !this.sessionActive ||
                 !this.isDeviceUser ||
+                !this.gpsEnabled ||
                 version !== this.sessionVersion ||
                 this.gpsRefreshInProgress
             ) {
+
                 return;
             }
 
             if (!navigator.geolocation) {
+
+                console.error(
+                    "El teléfono no admite geolocalización."
+                );
+
                 return;
             }
 
@@ -422,11 +531,26 @@ export class AppController {
 
                     this.gpsRefreshInProgress = false;
 
+                    if (
+                        !this.sessionActive ||
+                        !this.isDeviceUser ||
+                        !this.gpsEnabled ||
+                        version !== this.sessionVersion
+                    ) {
+
+                        return;
+                    }
+
                     const location = {
+
                         lat: position.coords.latitude,
+
                         lng: position.coords.longitude,
+
                         accuracy: position.coords.accuracy,
+
                         gpsFix: true,
+
                         timestamp: position.timestamp
                     };
 
@@ -441,31 +565,53 @@ export class AppController {
                     this.gpsRefreshInProgress = false;
 
                     console.warn(
-                        "No se pudo actualizar el GPS:",
+                        "Error actualizando GPS:",
+                        error.code,
                         error.message
                     );
                 },
 
                 {
                     enableHighAccuracy: true,
-                    maximumAge: 10000,
-                    timeout: 15000
+                    maximumAge: 3000,
+                    timeout: 20000
                 }
-
             );
+        };
 
-        }, 30000);
+        // Solicitar la primera ubicación.
+        refreshLocation();
+
+        // Solicitar nuevas posiciones.
+        this.gpsRefreshTimer = setInterval(
+            refreshLocation,
+            30000
+        );
+
+        console.log(
+            "SmartCane: actualización GPS cada 30 segundos."
+        );
     }
+
+    /*
+     * ==========================================
+     * DETENER GPS
+     * ==========================================
+     */
 
     stopGPSRefresh() {
 
         if (this.gpsRefreshTimer !== null) {
 
-            clearInterval(this.gpsRefreshTimer);
+            clearInterval(
+                this.gpsRefreshTimer
+            );
         }
 
         this.gpsRefreshTimer = null;
+
         this.gpsRefreshInProgress = false;
+
         this.gpsEnabled = false;
     }
 
@@ -477,11 +623,14 @@ export class AppController {
 
     showLogin() {
 
-        this.alertService.setNotificationsEnabled(false);
+        this.alertService.setNotificationsEnabled(
+            false
+        );
 
         this.sessionActive = false;
 
         this.currentUser = null;
+
         this.isCaregiver = false;
         this.isDeviceUser = false;
 
@@ -492,6 +641,7 @@ export class AppController {
         this.phoneLocationService?.stop();
 
         this.phoneLocationReceived = false;
+
         this.lastPhoneLocation = null;
         this.lastPhoneLocationAt = 0;
         this.lastPhoneHistoryAt = 0;
@@ -500,6 +650,10 @@ export class AppController {
 
         this.dashboardView.setPhoneLocation(null);
         this.dashboardView.setPendingFall(false);
+
+        /*
+         * Desconectar Bluetooth al cerrar sesión.
+         */
 
         if (this.bluetoothService) {
 
@@ -548,10 +702,15 @@ export class AppController {
         this.statusTimer = setInterval(() => {
 
             if (!this.sessionActive) {
+
                 return;
             }
 
-            // Heartbeat solo para bastón conectado.
+            /*
+             * Mantener el estado actualizado
+             * solo si el ESP32 sigue conectado.
+             */
+
             if (this.isDeviceUser) {
 
                 void this.sendBluetoothHeartbeat();
@@ -568,7 +727,9 @@ export class AppController {
 
         if (this.statusTimer !== null) {
 
-            clearInterval(this.statusTimer);
+            clearInterval(
+                this.statusTimer
+            );
         }
 
         this.statusTimer = null;
@@ -576,14 +737,15 @@ export class AppController {
 
     /*
      * ==========================================
-     * HEARTBEAT DE CONEXIÓN BLUETOOTH
+     * HEARTBEAT BLUETOOTH
      * ==========================================
      *
-     * Actualiza lastSeen en Firebase solamente
-     * mientras la sesión del bastón tenga
-     * conexión BLE activa.
+     * Actualiza lastSeen en Firebase cada
+     * 15 segundos mientras la conexión
+     * Bluetooth del teléfono esté activa.
      *
-     * No representa una lectura de sensores.
+     * El heartbeat NO representa una medición
+     * de distancia ni de aceleración.
      */
 
     async sendBluetoothHeartbeat() {
@@ -594,6 +756,7 @@ export class AppController {
             this.heartbeatInProgress ||
             !this.bluetoothService?.device?.gatt?.connected
         ) {
+
             return;
         }
 
@@ -604,8 +767,11 @@ export class AppController {
         try {
 
             const locationRecent = Boolean(
-                this.isValidLocation(this.lastPhoneLocation) &&
-                Date.now() - this.lastPhoneLocationAt <= 60000
+                this.isValidLocation(
+                    this.lastPhoneLocation
+                ) &&
+                Date.now() -
+                this.lastPhoneLocationAt <= 60000
             );
 
             const location = locationRecent
@@ -617,18 +783,20 @@ export class AppController {
                 };
 
             /*
-             * El esquema actual de status exige
-             * obstacleCm numérico y fallDetected.
+             * El esquema de status requiere
+             * obstacleCm y fallDetected.
              *
-             * Se conserva un valor previo cuando
-             * existe; en otro caso se usa 0
-             * únicamente como valor de compatibilidad.
+             * obstacleCm se conserva si ya existe;
+             * en caso contrario se utiliza 0
+             * como valor de compatibilidad.
              *
-             * NO es una medición ultrasónica.
+             * Esto NO es una medición real.
              */
 
             const previousObstacle =
-                Number(this.currentDeviceStatus?.obstacleCm);
+                Number(
+                    this.currentDeviceStatus?.obstacleCm
+                );
 
             const obstacleCm =
                 this.currentDeviceStatus?.obstacleCm != null &&
@@ -639,10 +807,15 @@ export class AppController {
 
             await this.deviceService.deviceRepository
                 .writeStatus({
+
                     lat: location.lat,
+
                     lng: location.lng,
+
                     gpsFix: location.gpsFix,
+
                     obstacleCm,
+
                     fallDetected: false
                 });
 
@@ -652,14 +825,14 @@ export class AppController {
             ) {
 
                 console.log(
-                    "Heartbeat BLE enviado a Firebase."
+                    "Heartbeat Bluetooth enviado a Firebase."
                 );
             }
 
         } catch (error) {
 
             console.error(
-                "Error actualizando estado del bastón:",
+                "Error actualizando estado SmartCane:",
                 error
             );
 
@@ -671,13 +844,14 @@ export class AppController {
 
     /*
      * ==========================================
-     * REFRESCAR ESTADO DE FIREBASE
+     * ACTUALIZAR ESTADO DEL BASTÓN
      * ==========================================
      */
 
     refreshDeviceStatus() {
 
-        const status = this.currentDeviceStatus;
+        const status =
+            this.currentDeviceStatus;
 
         const online = status
             ? this.deviceService.isOnline(status)
@@ -701,13 +875,18 @@ export class AppController {
 
         const version = this.sessionVersion;
 
-        const validSession = () => (
-            this.sessionActive &&
-            version === this.sessionVersion
-        );
+        const validSession = () => {
+
+            return (
+                this.sessionActive &&
+                version === this.sessionVersion
+            );
+        };
 
         /*
-         * ESTADO DEL BASTÓN.
+         * ==========================================
+         * ESTADO DEL BASTÓN
+         * ==========================================
          */
 
         const unsubscribeStatus =
@@ -716,6 +895,7 @@ export class AppController {
                 (status) => {
 
                     if (!validSession()) {
+
                         return;
                     }
 
@@ -745,14 +925,16 @@ export class AppController {
                 (error) => {
 
                     console.error(
-                        "Error de estado:",
+                        "Error escuchando estado:",
                         error
                     );
                 }
             );
 
         /*
-         * HISTORIAL DE UBICACIONES.
+         * ==========================================
+         * HISTORIAL DE UBICACIONES
+         * ==========================================
          */
 
         const unsubscribeHistory =
@@ -761,6 +943,7 @@ export class AppController {
                 (points) => {
 
                     if (!validSession()) {
+
                         return;
                     }
 
@@ -772,14 +955,16 @@ export class AppController {
                 (error) => {
 
                     console.error(
-                        "Error de historial:",
+                        "Error escuchando historial:",
                         error
                     );
                 }
             );
 
         /*
-         * ALERTAS DE FIREBASE.
+         * ==========================================
+         * ALERTAS SOS Y CAÍDAS
+         * ==========================================
          */
 
         const unsubscribeAlerts =
@@ -788,6 +973,7 @@ export class AppController {
                 (alerts) => {
 
                     if (!validSession()) {
+
                         return;
                     }
 
@@ -814,14 +1000,16 @@ export class AppController {
                 (error) => {
 
                     console.error(
-                        "Error de alertas:",
+                        "Error escuchando alertas:",
                         error
                     );
                 }
             );
 
         /*
-         * UBICACIÓN DEL TELÉFONO.
+         * ==========================================
+         * UBICACIÓN GPS DEL TELÉFONO
+         * ==========================================
          */
 
         const unsubscribePhone =
@@ -830,6 +1018,7 @@ export class AppController {
                 (location) => {
 
                     if (!validSession()) {
+
                         return;
                     }
 
@@ -844,6 +1033,11 @@ export class AppController {
                         now - updatedAt <= 60000 &&
                         updatedAt <= now + 10000
                     );
+
+                    /*
+                     * No mostrar ubicaciones antiguas
+                     * como si fueran actuales.
+                     */
 
                     if (
                         !this.isValidLocation(location) ||
@@ -863,12 +1057,26 @@ export class AppController {
 
                     this.phoneLocationReceived = true;
 
+                    /*
+                     * Actualizar datos GPS.
+                     */
+
                     this.dashboardView.setPhoneLocation(
                         location,
                         updatedAt
                     );
 
+                    /*
+                     * Mostrar marcador en Leaflet.
+                     */
+
                     this.mapAdapter.updateLocation(
+                        location.lat,
+                        location.lng
+                    );
+
+                    console.log(
+                        "Ubicación GPS recibida desde Firebase:",
                         location.lat,
                         location.lng
                     );
@@ -877,7 +1085,7 @@ export class AppController {
                 (error) => {
 
                     console.error(
-                        "Error de ubicación:",
+                        "Error escuchando GPS:",
                         error
                     );
                 }
@@ -901,7 +1109,9 @@ export class AppController {
 
         for (const unsubscribe of this.unsubscribers) {
 
-            if (typeof unsubscribe === "function") {
+            if (
+                typeof unsubscribe === "function"
+            ) {
 
                 unsubscribe();
             }
@@ -924,6 +1134,7 @@ export class AppController {
             !this.bluetoothService ||
             this.bluetoothConnecting
         ) {
+
             return;
         }
 
@@ -940,6 +1151,11 @@ export class AppController {
 
             return;
         }
+
+        /*
+         * Si ya está conectado, mantener
+         * el estado correctamente.
+         */
 
         if (
             this.bluetoothService.device?.gatt?.connected
@@ -989,7 +1205,9 @@ export class AppController {
                     ) {
 
                         this.dashboardView
-                            .updateBluetoothStatus(status);
+                            .updateBluetoothStatus(
+                                status
+                            );
 
                         if (status === "connected") {
 
@@ -998,6 +1216,11 @@ export class AppController {
                     }
                 }
             );
+
+            /*
+             * Verificar que la sesión
+             * siga activa al conectar.
+             */
 
             if (
                 !this.sessionActive ||
@@ -1032,7 +1255,7 @@ export class AppController {
         } catch (error) {
 
             console.error(
-                "Error de Bluetooth:",
+                "Error conectando Bluetooth:",
                 error
             );
 
@@ -1040,6 +1263,7 @@ export class AppController {
                 !this.sessionActive ||
                 version !== this.sessionVersion
             ) {
+
                 return;
             }
 
@@ -1070,24 +1294,33 @@ export class AppController {
      * ==========================================
      * RECIBIR MENSAJES BLUETOOTH
      * ==========================================
+     *
+     * Los mensajes deben coincidir con
+     * los emitidos por el ESP32.
      */
 
     handleBluetoothMessage(message) {
 
-        if (!this.sessionActive || !this.isDeviceUser) {
+        if (
+            !this.sessionActive ||
+            !this.isDeviceUser
+        ) {
+
             return;
         }
 
-        const text = String(message ?? "").trim();
+        const text =
+            String(message ?? "").trim();
 
         if (!text) {
+
             return;
         }
 
         this.lastBleMessage = text;
 
         console.log(
-            "Mensaje del ESP32:",
+            "Mensaje recibido del ESP32:",
             text
         );
 
@@ -1095,7 +1328,10 @@ export class AppController {
             text
         );
 
-        // SOS manual.
+        /*
+         * SOS físico.
+         */
+
         if (text === "SOS: Necesito ayuda") {
 
             void this.processBluetoothSOS(
@@ -1105,15 +1341,24 @@ export class AppController {
             return;
         }
 
-        // Posible caída del MPU6050.
-        if (text === "ALERTA: Posible caida detectada") {
+        /*
+         * Posible caída MPU6050.
+         */
+
+        if (
+            text === "ALERTA: Posible caida detectada"
+        ) {
 
             void this.processBluetoothSOS(
-                ALERT_TYPES.FALL ?? "fall"
+                ALERT_TYPES.FALL
             );
 
             return;
         }
+
+        /*
+         * Mensaje inicial del ESP32.
+         */
 
         if (text === "Smart Cane listo") {
 
@@ -1132,28 +1377,43 @@ export class AppController {
     isValidLocation(location) {
 
         return Boolean(
+
             location &&
+
             location.gpsFix === true &&
+
             Number.isFinite(location.lat) &&
+
             Number.isFinite(location.lng) &&
+
             location.lat >= -90 &&
+
             location.lat <= 90 &&
+
             location.lng >= -180 &&
+
             location.lng <= 180
         );
     }
 
     /*
      * ==========================================
-     * OBTENER GPS PARA EMERGENCIA
+     * OBTENER UBICACIÓN PARA EMERGENCIA
      * ==========================================
      */
 
     async getSOSLocation() {
 
+        /*
+         * Reutilizar posición reciente.
+         */
+
         if (
-            this.isValidLocation(this.lastPhoneLocation) &&
-            Date.now() - this.lastPhoneLocationAt <= 30000
+            this.isValidLocation(
+                this.lastPhoneLocation
+            ) &&
+            Date.now() -
+            this.lastPhoneLocationAt <= 30000
         ) {
 
             return {
@@ -1199,7 +1459,7 @@ export class AppController {
                     this.lastPhoneLocation = location;
 
                     this.lastPhoneLocationAt =
-                        position.timestamp || Date.now();
+                        Date.now();
 
                     this.dashboardView.setPhoneLocation(
                         location,
@@ -1230,13 +1490,13 @@ export class AppController {
 
     /*
      * ==========================================
-     * REGISTRAR SOS O POSIBLE CAÍDA
+     * PROCESAR EMERGENCIA SOS O CAÍDA
      * ==========================================
      *
-     * 1. Recibir evento BLE.
-     * 2. Obtener GPS si está disponible.
-     * 3. Guardar alerta en Firebase.
-     * 4. Enviar aviso a Telegram.
+     * 1. Recibir mensaje BLE.
+     * 2. Obtener ubicación GPS.
+     * 3. Crear alerta en Firebase.
+     * 4. Enviar alerta a Telegram.
      */
 
     async processBluetoothSOS(
@@ -1248,6 +1508,7 @@ export class AppController {
             !this.isDeviceUser ||
             this.sosProcessing
         ) {
+
             return;
         }
 
@@ -1261,10 +1522,16 @@ export class AppController {
 
         const now = Date.now();
 
+        /*
+         * Evitar duplicados consecutivos
+         * del mismo evento.
+         */
+
         if (
             this.lastEmergencyType === type &&
             now - this.lastSosAt < 3000
         ) {
+
             return;
         }
 
@@ -1279,6 +1546,11 @@ export class AppController {
             );
 
             let location;
+
+            /*
+             * Si falla el GPS, la emergencia
+             * se registra igualmente.
+             */
 
             try {
 
@@ -1303,8 +1575,13 @@ export class AppController {
                 !this.isDeviceUser ||
                 version !== this.sessionVersion
             ) {
+
                 return;
             }
+
+            /*
+             * Crear alerta Firebase.
+             */
 
             const alertId =
                 await this.alertService.createAlert(
@@ -1324,6 +1601,10 @@ export class AppController {
                 `${eventName} guardado en Firebase. Enviando Telegram...`
             );
 
+            /*
+             * Verificar Telegram.
+             */
+
             if (!this.telegramService) {
 
                 this.dashboardView.updateBluetoothMessage(
@@ -1332,6 +1613,10 @@ export class AppController {
 
                 return;
             }
+
+            /*
+             * Notificar Telegram.
+             */
 
             try {
 
