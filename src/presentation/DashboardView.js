@@ -1,26 +1,25 @@
 
 /*
  * ============================================
- * SMARTCANE
- * DashboardView.js
+ * SMARTCANE - DASHBOARD VIEW
  * ============================================
  *
- * Vista para dos tipos de usuarios:
+ * Compatible con:
  *
- * BASTÓN:
- * - Estado de monitoreo
- * - GPS y obstáculos
- * - Conexión Bluetooth BLE
- * - Sin controles de atención
+ * - ESP32 Bluetooth BLE.
+ * - Sensor ultrasónico.
+ * - MPU6050 (alertas de posibles caídas).
+ * - Botón SOS físico.
+ * - Firebase Realtime Database.
+ * - Ubicación GPS del teléfono.
+ * - Panel del bastón y del cuidador.
  *
- * CUIDADOR:
- * - Inicio
- * - Ubicación y recorrido
- * - Alertas pendientes
- * - Historial de emergencias
- * - Notificaciones
+ * El ESP32 no necesita modificaciones.
  *
- * Mantiene compatibilidad con AppController.
+ * IMPORTANTE:
+ * El firmware actual transmite eventos SOS y
+ * posibles caídas, pero no transmite valores
+ * numéricos del MPU6050 ni distancias por BLE.
  */
 
 export class DashboardView {
@@ -38,53 +37,59 @@ export class DashboardView {
         this.connectionIndicator = get("connectionIndicator");
         this.lastSeenText = get("lastSeenText");
 
-        // Sensores.
+        // Sensores y GPS.
         this.gpsWarning = get("gpsWarning");
         this.obstacleValue = get("obstacleValue");
         this.fallValue = get("fallValue");
         this.fallCard = get("fallCard");
         this.coordinatesText = get("coordinatesText");
 
-        // Alertas e historial.
+        // Alertas.
         this.alertsList = get("alertsList");
         this.historyAlertsList = get("historyAlertsList");
 
         this.pendingAlertCount = get("pendingAlertCount");
+
         this.pendingAlertCountSecondary =
             get("pendingAlertCountSecondary");
 
         this.noPendingAlerts = get("noPendingAlerts");
 
-        // Controles generales.
+        // Botones generales.
         this.logoutButton = get("logoutButton");
         this.centerMapButton = get("centerMapButton");
 
         // Simulador.
         this.simulatorPanel = get("simulatorPanel");
+
         this.simulateNormalButton =
             get("simulateNormalButton");
+
         this.simulateObstacleButton =
             get("simulateObstacleButton");
+
         this.simulateFallButton =
             get("simulateFallButton");
+
         this.simulateSosButton =
             get("simulateSosButton");
+
         this.simulateGpsButton =
             get("simulateGpsButton");
 
-        // Secciones de cada rol.
+        // Interfaz del cuidador.
         this.caregiverIntro = get("caregiverIntro");
-        this.caregiverNavigation =
-            get("caregiverNavigation");
+        this.caregiverNavigation = get("caregiverNavigation");
         this.caregiverSummary = get("caregiverSummary");
 
+        // Interfaz del bastón.
         this.deviceIntro = get("deviceIntro");
         this.deviceInfoPanel = get("deviceInfoPanel");
 
-        this.notificationsPanel =
-            get("notificationsPanel");
+        // Notificaciones.
+        this.notificationsPanel = get("notificationsPanel");
 
-        // Pestañas.
+        // Pestañas del cuidador.
         this.tabPanels = {
             inicio: get("scPanelInicio"),
             mapa: get("scPanelMapa"),
@@ -93,7 +98,7 @@ export class DashboardView {
             notificaciones: get("scPanelNotificaciones")
         };
 
-        // Bluetooth.
+        // Bluetooth BLE.
         this.bluetoothPanel = null;
         this.bluetoothButton = null;
         this.bluetoothStatus = null;
@@ -102,14 +107,14 @@ export class DashboardView {
         this.bluetoothConnected = false;
         this.bluetoothBound = false;
 
-        // Evitar enlazar el simulador varias veces.
+        // Control de enlaces del simulador.
         this.simulatorBound = false;
 
-        // Estado Firebase.
+        // Estado general de Firebase.
         this.lastDeviceStatus = null;
         this.lastDeviceOnline = false;
 
-        // GPS del teléfono.
+        // Ubicación GPS del teléfono.
         this.phoneLocation = null;
         this.phoneLocationAt = 0;
 
@@ -120,19 +125,25 @@ export class DashboardView {
         this.pendingFall = false;
         this.currentAlerts = [];
 
+        // Información visual del MPU6050.
+        this.mpuPanel = null;
+        this.mpuStatus = null;
+        this.mpuLastEvent = null;
+
         // Mapa.
         this.mapAdapter = null;
 
         this.createBluetoothPanel();
+        this.createMPUPanel();
         this.configureTabs();
     }
 
-
     /*
      * ============================================
-     * CONFIGURAR NAVEGACIÓN DEL CUIDADOR
+     * CONFIGURAR PESTAÑAS DEL CUIDADOR
      * ============================================
      */
+
     configureTabs() {
 
         const buttons = document.querySelectorAll(
@@ -141,19 +152,14 @@ export class DashboardView {
 
         for (const button of buttons) {
 
-            button.addEventListener(
-                "click",
-                () => {
+            button.addEventListener("click", () => {
 
-                    if (!this.isCaregiver) {
-                        return;
-                    }
-
-                    this.openTab(
-                        button.dataset.scTab
-                    );
+                if (!this.isCaregiver) {
+                    return;
                 }
-            );
+
+                this.openTab(button.dataset.scTab);
+            });
         }
 
         const shortcuts = document.querySelectorAll(
@@ -162,28 +168,23 @@ export class DashboardView {
 
         for (const button of shortcuts) {
 
-            button.addEventListener(
-                "click",
-                () => {
+            button.addEventListener("click", () => {
 
-                    if (!this.isCaregiver) {
-                        return;
-                    }
-
-                    this.openTab(
-                        button.dataset.scOpen
-                    );
+                if (!this.isCaregiver) {
+                    return;
                 }
-            );
+
+                this.openTab(button.dataset.scOpen);
+            });
         }
     }
-
 
     /*
      * ============================================
      * ABRIR PESTAÑA
      * ============================================
      */
+
     openTab(tabName) {
 
         if (!this.isCaregiver) {
@@ -217,16 +218,10 @@ export class DashboardView {
 
             button.setAttribute(
                 "aria-selected",
-                String(
-                    button.dataset.scTab === tabName
-                )
+                String(button.dataset.scTab === tabName)
             );
         }
 
-        /*
-         * Leaflet necesita recalcular su tamaño
-         * cuando se abre la pestaña del mapa.
-         */
         if (tabName === "mapa") {
 
             setTimeout(() => {
@@ -248,32 +243,28 @@ export class DashboardView {
         }
     }
 
-
     /*
      * ============================================
-     * RECIBIR ADAPTADOR DEL MAPA
+     * ADAPTADOR DEL MAPA
      * ============================================
-     *
-     * Es opcional porque AppController también
-     * administra el mapa directamente.
      */
+
     setMapAdapter(mapAdapter) {
 
         this.mapAdapter = mapAdapter;
     }
-
 
     /*
      * ============================================
      * CREAR PANEL BLUETOOTH
      * ============================================
      */
+
     createBluetoothPanel() {
 
-        const existing =
-            document.getElementById(
-                "bluetoothPanel"
-            );
+        const existing = document.getElementById(
+            "bluetoothPanel"
+        );
 
         if (existing) {
 
@@ -297,47 +288,41 @@ export class DashboardView {
             return;
         }
 
-        const panel = document.createElement(
-            "section"
-        );
+        const panel = document.createElement("section");
 
         panel.id = "bluetoothPanel";
-
         panel.className = "sc-card";
 
         panel.style.cssText = `
-            margin-top: 18px;
-            padding: 20px;
-            border-radius: 16px;
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
+            margin-top:18px;
+            padding:20px;
+            border-radius:16px;
+            background:#ffffff;
+            border:1px solid #e2e8f0;
         `;
 
-        const title =
-            document.createElement("h3");
+        const title = document.createElement("h3");
 
-        title.textContent =
-            "Conexión con el bastón";
+        title.textContent = "Conexión con el bastón";
 
         title.style.cssText = `
-            margin: 0 0 12px;
-            font-size: 19px;
-            color: #101b36;
+            margin:0 0 12px;
+            font-size:19px;
+            color:#101b36;
         `;
 
         this.bluetoothStatus =
             document.createElement("p");
 
-        this.bluetoothStatus.id =
-            "bluetoothStatus";
+        this.bluetoothStatus.id = "bluetoothStatus";
 
         this.bluetoothStatus.textContent =
             "Estado: Desconectado";
 
         this.bluetoothStatus.style.cssText = `
-            font-size: 14px;
-            color: #b91c1c;
-            margin-bottom: 14px;
+            font-size:14px;
+            color:#b91c1c;
+            margin-bottom:14px;
         `;
 
         this.bluetoothButton =
@@ -346,8 +331,7 @@ export class DashboardView {
         this.bluetoothButton.id =
             "connectBluetoothButton";
 
-        this.bluetoothButton.type =
-            "button";
+        this.bluetoothButton.type = "button";
 
         this.bluetoothButton.className =
             "primary-button";
@@ -356,15 +340,15 @@ export class DashboardView {
             "Conectar SmartCane";
 
         this.bluetoothButton.style.cssText = `
-            width: 100%;
-            max-width: 340px;
-            padding: 14px 18px;
-            border-radius: 11px;
-            background: #2563eb;
-            color: #ffffff;
-            font-size: 15px;
-            font-weight: 700;
-            cursor: pointer;
+            width:100%;
+            max-width:340px;
+            padding:14px 18px;
+            border-radius:11px;
+            background:#2563eb;
+            color:#ffffff;
+            font-size:15px;
+            font-weight:700;
+            cursor:pointer;
         `;
 
         this.bluetoothMessage =
@@ -377,10 +361,10 @@ export class DashboardView {
             "Esperando conexión con el ESP32.";
 
         this.bluetoothMessage.style.cssText = `
-            margin: 14px 0 0;
-            color: #64748b;
-            font-size: 13px;
-            overflow-wrap: anywhere;
+            margin:14px 0 0;
+            color:#64748b;
+            font-size:13px;
+            overflow-wrap:anywhere;
         `;
 
         panel.append(
@@ -392,30 +376,188 @@ export class DashboardView {
 
         this.bluetoothPanel = panel;
 
-        /*
-         * Colocar Bluetooth dentro de la
-         * interfaz del usuario bastón.
-         */
         if (this.deviceInfoPanel) {
 
-            this.deviceInfoPanel.appendChild(
-                panel
-            );
+            this.deviceInfoPanel.appendChild(panel);
 
         } else if (this.screen) {
 
-            this.screen.appendChild(
-                panel
-            );
+            this.screen.appendChild(panel);
         }
     }
 
+    /*
+     * ============================================
+     * PANEL INFORMATIVO MPU6050
+     * ============================================
+     *
+     * El sensor funciona dentro del ESP32.
+     * La página no recibe sus mediciones.
+     *
+     * Aquí mostramos únicamente las alertas
+     * de caída registradas en Firebase.
+     */
+
+    createMPUPanel() {
+
+        const existing = document.getElementById(
+            "scMPUPanel"
+        );
+
+        if (existing) {
+
+            this.mpuPanel = existing;
+
+        } else {
+
+            this.mpuPanel =
+                document.createElement("section");
+
+            this.mpuPanel.id = "scMPUPanel";
+
+            this.mpuPanel.className = "sc-card";
+
+            this.mpuPanel.style.cssText = `
+                margin-top:18px;
+                padding:20px;
+                border-radius:16px;
+                border:1px solid #dbeafe;
+                background:#f8fbff;
+            `;
+        }
+
+        this.mpuPanel.replaceChildren();
+
+        const title = document.createElement("h3");
+
+        title.textContent =
+            "🧭 Monitoreo de posibles caídas";
+
+        title.style.cssText = `
+            margin:0 0 10px;
+            font-size:17px;
+            color:#101b36;
+        `;
+
+        this.mpuStatus =
+            document.createElement("p");
+
+        this.mpuStatus.style.cssText = `
+            margin:8px 0;
+            font-size:14px;
+            color:#475569;
+        `;
+
+        this.mpuLastEvent =
+            document.createElement("p");
+
+        this.mpuLastEvent.style.cssText = `
+            margin:8px 0;
+            font-size:13px;
+            color:#64748b;
+        `;
+
+        const note = document.createElement("p");
+
+        note.textContent =
+            "Las posibles caídas se detectan en el ESP32 " +
+            "y se registran en Firebase cuando el evento " +
+            "llega por Bluetooth.";
+
+        note.style.cssText = `
+            margin:12px 0 0;
+            font-size:12px;
+            color:#64748b;
+            line-height:1.5;
+        `;
+
+        this.mpuPanel.append(
+            title,
+            this.mpuStatus,
+            this.mpuLastEvent,
+            note
+        );
+
+        if (!existing) {
+
+            const container =
+                this.deviceInfoPanel ||
+                this.screen;
+
+            container?.appendChild(this.mpuPanel);
+        }
+
+        this.updateMPUStatus();
+    }
 
     /*
      * ============================================
-     * BOTÓN CONECTAR BLUETOOTH
+     * ACTUALIZAR ESTADO INFORMATIVO DEL MPU
      * ============================================
      */
+
+    updateMPUStatus() {
+
+        const falls = this.currentAlerts.filter(
+            (alert) => alert.type === "fall"
+        );
+
+        const pending = falls.filter(
+            (alert) => alert.attended !== true
+        );
+
+        if (this.mpuStatus) {
+
+            this.mpuStatus.textContent =
+                pending.length > 0
+                    ? `⚠️ ${pending.length} posible(s) caída(s) pendiente(s)`
+                    : "Sin posibles caídas pendientes";
+
+            this.mpuStatus.style.color =
+                pending.length > 0
+                    ? "#b91c1c"
+                    : "#15803d";
+
+            this.mpuStatus.style.fontWeight =
+                pending.length > 0
+                    ? "700"
+                    : "400";
+        }
+
+        if (this.mpuLastEvent) {
+
+            const latest = falls.reduce(
+                (current, item) => {
+
+                    if (!current) {
+                        return item;
+                    }
+
+                    return Number(item.createdAt) >
+                    Number(current.createdAt)
+                        ? item
+                        : current;
+
+                },
+                null
+            );
+
+            this.mpuLastEvent.textContent = latest
+                ? "Última posible caída: " +
+                this.formatDate(latest.createdAt) +
+                (latest.attended
+                    ? " · Atendida"
+                    : " · Pendiente")
+                : "Todavía no hay caídas registradas.";
+        }
+    }
+
+    /*
+     * ============================================
+     * ENLAZAR BOTÓN BLUETOOTH
+     * ============================================
+     */
+
     bindBluetooth(callback) {
 
         if (
@@ -461,12 +603,12 @@ export class DashboardView {
         this.bluetoothBound = true;
     }
 
-
     /*
      * ============================================
-     * ACTUALIZAR ESTADO BLUETOOTH
+     * ESTADO BLUETOOTH
      * ============================================
      */
+
     updateBluetoothStatus(status) {
 
         const states = {
@@ -528,41 +670,49 @@ export class DashboardView {
         this.refreshCombinedStatus();
     }
 
-
     /*
      * ============================================
-     * MOSTRAR MENSAJES DEL ESP32
+     * MOSTRAR MENSAJES BLE
      * ============================================
      */
+
     updateBluetoothMessage(message) {
 
         if (!this.bluetoothMessage) {
             return;
         }
 
+        const text = String(message ?? "");
+
         this.bluetoothMessage.textContent =
-            "Última señal BLE: " + message;
+            "Última señal BLE: " + text;
 
         const isSOS =
-            String(message).includes("SOS");
+            /SOS/i.test(text);
+
+        const isFall =
+            /caida|caída|fall/i.test(text);
+
+        const isEmergency =
+            isSOS || isFall;
 
         this.bluetoothMessage.style.color =
-            isSOS
+            isEmergency
                 ? "#b91c1c"
                 : "#64748b";
 
         this.bluetoothMessage.style.fontWeight =
-            isSOS
+            isEmergency
                 ? "700"
                 : "400";
     }
-
 
     /*
      * ============================================
      * MOSTRAR DASHBOARD
      * ============================================
      */
+
     show() {
 
         this.screen?.classList.remove(
@@ -570,12 +720,12 @@ export class DashboardView {
         );
     }
 
-
     /*
      * ============================================
      * OCULTAR DASHBOARD
      * ============================================
      */
+
     hide() {
 
         this.screen?.classList.add(
@@ -587,12 +737,12 @@ export class DashboardView {
         );
     }
 
-
     /*
      * ============================================
      * MOSTRAR SIMULADOR
      * ============================================
      */
+
     showSimulator() {
 
         this.simulatorPanel?.classList.remove(
@@ -600,21 +750,17 @@ export class DashboardView {
         );
     }
 
-
     /*
      * ============================================
      * CONFIGURAR INTERFAZ POR ROL
      * ============================================
      */
+
     setCaregiverMode(isCaregiver) {
 
         this.isCaregiver =
             Boolean(isCaregiver);
 
-        /*
-         * Mostrar navegación y secciones
-         * solamente al cuidador.
-         */
         if (this.caregiverIntro) {
 
             this.caregiverIntro.hidden =
@@ -633,9 +779,6 @@ export class DashboardView {
                 !this.isCaregiver;
         }
 
-        /*
-         * Interfaz sencilla del bastón.
-         */
         if (this.deviceIntro) {
 
             this.deviceIntro.hidden =
@@ -648,10 +791,6 @@ export class DashboardView {
                 this.isCaregiver;
         }
 
-        /*
-         * Notificaciones exclusivas
-         * de la cuenta del cuidador.
-         */
         if (this.notificationsPanel) {
 
             this.notificationsPanel.hidden =
@@ -663,28 +802,26 @@ export class DashboardView {
             );
         }
 
-        /*
-         * Bluetooth solamente al bastón.
-         */
+        // Bluetooth solo para el bastón.
         if (this.bluetoothPanel) {
 
             this.bluetoothPanel.hidden =
                 this.isCaregiver;
         }
 
-        /*
-         * Botón de centrar mapa
-         * para el cuidador.
-         */
+        // Información del MPU en la vista del bastón.
+        if (this.mpuPanel) {
+
+            this.mpuPanel.hidden =
+                this.isCaregiver;
+        }
+
         if (this.centerMapButton) {
 
             this.centerMapButton.hidden =
                 !this.isCaregiver;
         }
 
-        /*
-         * Restablecer la pestaña inicial.
-         */
         if (this.isCaregiver) {
 
             this.openTab("inicio");
@@ -706,12 +843,12 @@ export class DashboardView {
         this.refreshCombinedStatus();
     }
 
-
     /*
      * ============================================
-     * GUARDAR ESTADO DE FIREBASE
+     * ACTUALIZAR ESTADO FIREBASE
      * ============================================
      */
+
     updateStatus(status, isOnline) {
 
         this.lastDeviceStatus = status;
@@ -722,25 +859,33 @@ export class DashboardView {
         this.refreshCombinedStatus();
     }
 
-
     /*
      * ============================================
      * GUARDAR GPS DEL TELÉFONO
      * ============================================
      */
+
     setPhoneLocation(
         location,
         receivedAt = Date.now()
     ) {
 
         const valid = Boolean(
+
             location &&
+
             location.gpsFix === true &&
+
             Number.isFinite(location.lat) &&
+
             Number.isFinite(location.lng) &&
+
             location.lat >= -90 &&
+
             location.lat <= 90 &&
+
             location.lng >= -180 &&
+
             location.lng <= 180
         );
 
@@ -761,18 +906,19 @@ export class DashboardView {
         } else {
 
             this.phoneLocation = null;
+
             this.phoneLocationAt = 0;
         }
 
         this.refreshCombinedStatus();
     }
 
-
     /*
      * ============================================
-     * REGISTRAR CAÍDA PENDIENTE
+     * ESTADO DE CAÍDA PENDIENTE
      * ============================================
      */
+
     setPendingFall(value) {
 
         this.pendingFall =
@@ -781,12 +927,12 @@ export class DashboardView {
         this.refreshCombinedStatus();
     }
 
-
     /*
      * ============================================
-     * ACTUALIZAR ESTADO COMBINADO
+     * ACTUALIZAR ESTADO GENERAL
      * ============================================
      */
+
     refreshCombinedStatus() {
 
         const status =
@@ -809,11 +955,9 @@ export class DashboardView {
         );
 
         /*
-         * ESTADO GENERAL.
-         *
-         * GPS del teléfono no significa que
-         * el ESP32 esté conectado por BLE.
+         * Estado de conexión.
          */
+
         let connectionText =
             "Sin datos recientes del bastón";
 
@@ -843,8 +987,11 @@ export class DashboardView {
         }
 
         const visuallyOnline = Boolean(
+
             recentDevice ||
+
             gpsRecent ||
+
             (
                 this.bluetoothConnected &&
                 !this.isCaregiver
@@ -861,10 +1008,10 @@ export class DashboardView {
             !visuallyOnline
         );
 
-
         /*
-         * ÚLTIMA ACTUALIZACIÓN.
+         * Última actualización.
          */
+
         if (this.lastSeenText) {
 
             if (
@@ -902,21 +1049,23 @@ export class DashboardView {
             }
         }
 
-
         /*
-         * SENSOR DE OBSTÁCULOS.
+         * Sensor ultrasónico.
+         *
+         * Solo mostrar mediciones recientes
+         * si existen en Firebase.
          */
+
         if (this.obstacleValue) {
 
-            const value = status?.obstacleCm;
+            const value =
+                status?.obstacleCm;
 
             if (
                 recentDevice &&
                 value !== null &&
                 value !== undefined &&
-                Number.isFinite(
-                    Number(value)
-                )
+                Number.isFinite(Number(value))
             ) {
 
                 this.obstacleValue.textContent =
@@ -929,18 +1078,15 @@ export class DashboardView {
             }
         }
 
-
         /*
-         * CAÍDAS.
-         *
-         * Una caída atendida queda en
-         * el historial, no como pendiente.
+         * Posibles caídas.
          */
+
         if (this.fallValue) {
 
             this.fallValue.textContent =
                 this.pendingFall
-                    ? "Caída pendiente"
+                    ? "Posible caída pendiente"
                     : "Sin caída pendiente";
         }
 
@@ -949,15 +1095,19 @@ export class DashboardView {
             this.pendingFall
         );
 
-
         /*
-         * GPS DEL TELÉFONO O DISPOSITIVO.
+         * GPS disponible.
          */
+
         const deviceGPS = Boolean(
+
             recentDevice &&
+
             status &&
+
             typeof status.hasLocation ===
             "function" &&
+
             status.hasLocation()
         );
 
@@ -982,9 +1132,9 @@ export class DashboardView {
             } else if (deviceGPS) {
 
                 this.coordinatesText.textContent =
-                    status.lat.toFixed(6) +
+                    Number(status.lat).toFixed(6) +
                     ", " +
-                    status.lng.toFixed(6);
+                    Number(status.lng).toFixed(6);
 
             } else {
 
@@ -994,16 +1144,15 @@ export class DashboardView {
         }
     }
 
-
     /*
      * ============================================
-     * RENDERIZAR ALERTAS DE FIREBASE
+     * RENDERIZAR ALERTAS
      * ============================================
      *
-     * Separa:
-     * - Pendientes
-     * - Historial atendido
+     * Alertas SOS y caídas registradas
+     * en Firebase Realtime Database.
      */
+
     renderAlerts(alerts, onAttend) {
 
         const records =
@@ -1013,32 +1162,30 @@ export class DashboardView {
 
         this.currentAlerts = records;
 
-        const pending =
-            records.filter(
-                (alert) =>
-                    alert.attended !== true
-            );
+        const pending = records.filter(
+            (alert) => alert.attended !== true
+        );
 
-        const attended =
-            records.filter(
-                (alert) =>
-                    alert.attended === true
-            );
+        const attended = records.filter(
+            (alert) => alert.attended === true
+        );
 
         /*
-         * Actualizar indicador de caídas.
+         * Detectar posibles caídas pendientes.
          */
+
         this.setPendingFall(
             pending.some(
-                (alert) =>
-                    alert.type === "fall"
+                (alert) => alert.type === "fall"
             )
         );
 
+        this.updateMPUStatus();
 
         /*
-         * Actualizar contadores.
+         * Contadores.
          */
+
         if (this.pendingAlertCount) {
 
             this.pendingAlertCount.textContent =
@@ -1056,10 +1203,10 @@ export class DashboardView {
                     : pending.length + " pendientes";
         }
 
-
         /*
-         * RENDERIZAR PENDIENTES.
+         * Alertas pendientes.
          */
+
         if (this.alertsList) {
 
             this.alertsList.replaceChildren();
@@ -1069,8 +1216,7 @@ export class DashboardView {
                 const empty =
                     document.createElement("div");
 
-                empty.className =
-                    "sc-empty";
+                empty.className = "sc-empty";
 
                 empty.textContent =
                     "No hay emergencias pendientes.";
@@ -1098,14 +1244,13 @@ export class DashboardView {
 
         if (this.noPendingAlerts) {
 
-            // Ya mostramos el vacío en alertsList.
             this.noPendingAlerts.hidden = true;
         }
 
-
         /*
-         * RENDERIZAR HISTORIAL ATENDIDO.
+         * Historial de alertas atendidas.
          */
+
         if (this.historyAlertsList) {
 
             this.historyAlertsList.replaceChildren();
@@ -1143,12 +1288,12 @@ export class DashboardView {
         }
     }
 
-
     /*
      * ============================================
      * CREAR ELEMENTO DE ALERTA
      * ============================================
      */
+
     createAlertElement(item, onAttend) {
 
         const article =
@@ -1157,65 +1302,84 @@ export class DashboardView {
         article.className =
             "alert-item " +
             (
-                item.attended
+                item.attended === true
                     ? "attended"
                     : "unattended"
             );
 
         /*
-         * TÍTULO Y FECHA.
+         * Título y fecha.
          */
+
         const header =
             document.createElement("div");
 
-        header.className =
-            "alert-header";
+        header.className = "alert-header";
 
         const type =
             document.createElement("span");
 
-        type.className =
-            "alert-type";
+        type.className = "alert-type";
 
-        type.textContent =
-            item.type === "fall"
-                ? "⚠️ Posible caída"
-                : "🚨 Emergencia SOS";
+        const isFall =
+            item.type === "fall";
+
+        type.textContent = isFall
+            ? "⚠️ Posible caída detectada"
+            : "🚨 Emergencia SOS";
 
         const time =
             document.createElement("span");
 
-        time.className =
-            "alert-time";
+        time.className = "alert-time";
 
         time.textContent =
             this.formatDate(
                 item.createdAt
             );
 
-        header.append(
-            type,
-            time
-        );
+        header.append(type, time);
 
-        article.appendChild(
-            header
-        );
-
+        article.appendChild(header);
 
         /*
-         * UBICACIÓN DE LA EMERGENCIA.
+         * Descripción del tipo de alerta.
          */
+
+        const description =
+            document.createElement("p");
+
+        description.className =
+            "sc-device-note";
+
+        description.textContent = isFall
+            ? "El bastón registró un evento de posible caída."
+            : "Se recibió una solicitud de ayuda SOS.";
+
+        description.style.marginBottom = "10px";
+
+        article.appendChild(description);
+
+        /*
+         * Ubicación GPS.
+         */
+
         const locationRow =
             document.createElement("div");
 
-        locationRow.style.marginBottom =
-            "12px";
+        locationRow.style.marginBottom = "12px";
 
-        if (
-            typeof item.isLocated === "function" &&
-            item.isLocated()
-        ) {
+        const located = Boolean(
+            item.gpsFix === true &&
+            Number.isFinite(Number(item.lat)) &&
+            Number.isFinite(Number(item.lng)) &&
+            Number(item.lat) >= -90 &&
+            Number(item.lat) <= 90 &&
+            Number(item.lng) >= -180 &&
+            Number(item.lng) <= 180
+        );
+
+        if (located) {
 
             const coordinates =
                 document.createElement("p");
@@ -1232,8 +1396,7 @@ export class DashboardView {
             const link =
                 document.createElement("a");
 
-            link.className =
-                "alert-location";
+            link.className = "alert-location";
 
             link.href =
                 "https://maps.google.com/?q=" +
@@ -1241,8 +1404,7 @@ export class DashboardView {
                     item.lat + "," + item.lng
                 );
 
-            link.target =
-                "_blank";
+            link.target = "_blank";
 
             link.rel =
                 "noopener noreferrer";
@@ -1260,25 +1422,20 @@ export class DashboardView {
             const noGPS =
                 document.createElement("span");
 
-            noGPS.className =
-                "alert-time";
+            noGPS.className = "alert-time";
 
             noGPS.textContent =
-                "Ubicación no disponible";
+                "📍 Ubicación GPS no disponible";
 
-            locationRow.appendChild(
-                noGPS
-            );
+            locationRow.appendChild(noGPS);
         }
 
-        article.appendChild(
-            locationRow
-        );
-
+        article.appendChild(locationRow);
 
         /*
-         * ESTADO DE ATENCIÓN.
+         * Estado de atención.
          */
+
         if (item.attended === true) {
 
             const attendedLabel =
@@ -1302,8 +1459,7 @@ export class DashboardView {
             const button =
                 document.createElement("button");
 
-            button.type =
-                "button";
+            button.type = "button";
 
             button.className =
                 "secondary-button";
@@ -1322,9 +1478,7 @@ export class DashboardView {
 
                     try {
 
-                        await onAttend(
-                            item.id
-                        );
+                        await onAttend(item.id);
 
                         button.textContent =
                             "Actualizando...";
@@ -1348,20 +1502,18 @@ export class DashboardView {
                 }
             );
 
-            article.appendChild(
-                button
-            );
+            article.appendChild(button);
         }
 
         return article;
     }
-
 
     /*
      * ============================================
      * CERRAR SESIÓN
      * ============================================
      */
+
     bindLogout(callback) {
 
         this.logoutButton?.addEventListener(
@@ -1370,12 +1522,12 @@ export class DashboardView {
         );
     }
 
-
     /*
      * ============================================
      * CENTRAR MAPA
      * ============================================
      */
+
     bindCenterMap(callback) {
 
         this.centerMapButton?.addEventListener(
@@ -1384,12 +1536,12 @@ export class DashboardView {
         );
     }
 
-
     /*
      * ============================================
      * SIMULADOR
      * ============================================
      */
+
     bindSimulator(callbacks) {
 
         if (this.simulatorBound) {
@@ -1424,28 +1576,21 @@ export class DashboardView {
         this.simulatorBound = true;
     }
 
-
     /*
      * ============================================
      * FORMATEAR FECHA Y HORA
      * ============================================
      */
+
     formatDate(timestamp) {
 
         if (!timestamp) {
-
             return "Hora no disponible";
         }
 
-        const date =
-            new Date(timestamp);
+        const date = new Date(timestamp);
 
-        if (
-            Number.isNaN(
-                date.getTime()
-            )
-        ) {
-
+        if (Number.isNaN(date.getTime())) {
             return "Fecha no válida";
         }
 

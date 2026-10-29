@@ -57,6 +57,7 @@ export class AppController {
         // Alertas SOS.
         this.sosProcessing = false;
         this.lastSosAt = 0;
+        this.lastEmergencyType = null;
 
         // Sesión y roles.
         this.sessionActive = false;
@@ -463,11 +464,14 @@ export class AppController {
             }
         }
 
+
         this.bluetoothConnecting = false;
         this.lastBleMessage = null;
 
         this.sosProcessing = false;
         this.lastSosAt = 0;
+        this.lastEmergencyType = null;
+
 
         this.dashboardView.hide();
         this.loginView.show();
@@ -945,18 +949,14 @@ export class AppController {
      * RECIBIR MENSAJES BLUETOOTH
      * ==========================================
      */
+
     handleBluetoothMessage(message) {
 
-        if (
-            !this.sessionActive ||
-            !this.isDeviceUser
-        ) {
+        if (!this.sessionActive || !this.isDeviceUser) {
             return;
         }
 
-        const text = String(
-            message ?? ""
-        ).trim();
+        const text = String(message ?? "").trim();
 
         if (!text) {
             return;
@@ -964,23 +964,33 @@ export class AppController {
 
         this.lastBleMessage = text;
 
-        console.log(
-            "Mensaje del ESP32:",
-            text
-        );
+        console.log("Mensaje del ESP32:", text);
 
-        this.dashboardView.updateBluetoothMessage(
-            text
-        );
+        this.dashboardView.updateBluetoothMessage(text);
 
-        /*
-         * Detectar mensaje SOS físico.
-         */
+        // SOS manual: pulsación larga.
         if (text === "SOS: Necesito ayuda") {
 
-            void this.processBluetoothSOS();
+            void this.processBluetoothSOS(ALERT_TYPES.SOS);
+            return;
+        }
+
+        // Posible caída detectada por MPU6050.
+        if (text === "ALERTA: Posible caida detectada") {
+
+            void this.processBluetoothSOS(
+                ALERT_TYPES.FALL ?? "fall"
+            );
+            return;
+        }
+
+        // Mensaje inicial del ESP32.
+        if (text === "Smart Cane listo") {
+
+            console.log("SmartCane preparado.");
         }
     }
+
 
 
     /*
@@ -1114,7 +1124,8 @@ export class AppController {
      * 3. Guardar alerta en Firebase.
      * 4. Enviar alerta a Telegram.
      */
-    async processBluetoothSOS() {
+
+    async processBluetoothSOS(type = ALERT_TYPES.SOS) {
 
         if (
             !this.sessionActive ||
@@ -1124,12 +1135,17 @@ export class AppController {
             return;
         }
 
-        /*
-         * Evitar señales repetidas
-         * en menos de tres segundos.
-         */
+        const isFall = type === "fall";
+        const eventName = isFall
+            ? "Posible caída"
+            : "SOS";
+
+        // Evitar duplicados consecutivos del mismo evento.
+        const now = Date.now();
+
         if (
-            Date.now() - this.lastSosAt < 3000
+            this.lastEmergencyType === type &&
+            now - (this.lastSosAt || 0) < 3000
         ) {
             return;
         }
@@ -1141,14 +1157,30 @@ export class AppController {
         try {
 
             this.dashboardView.updateBluetoothMessage(
-                "SOS recibido. Obteniendo ubicación..."
+                `${eventName} recibido. Obteniendo ubicación...`
             );
 
-            /*
-             * PASO 1. OBTENER GPS.
-             */
-            const location =
-                await this.getSOSLocation();
+            // Obtener GPS sin impedir que se registre
+            // la emergencia cuando no esté disponible.
+            let location;
+
+            try {
+
+                location = await this.getSOSLocation();
+
+            } catch (gpsError) {
+
+                console.warn(
+                    "GPS no disponible:",
+                    gpsError
+                );
+
+                location = {
+                    lat: 0,
+                    lng: 0,
+                    gpsFix: false
+                };
+            }
 
             if (
                 !this.sessionActive ||
@@ -1158,48 +1190,42 @@ export class AppController {
                 return;
             }
 
-            /*
-             * PASO 2. GUARDAR ALERTA.
-             */
-            const alertId =
-                await this.alertService.createAlert(
-                    ALERT_TYPES.SOS,
-                    location
-                );
+            // Crear alerta en Firebase.
+            const alertId = await this.alertService.createAlert(
+                type,
+                location
+            );
 
             this.lastSosAt = Date.now();
+            this.lastEmergencyType = type;
 
             console.log(
-                "SOS registrado en Firebase:",
+                `${eventName} registrado en Firebase:`,
                 alertId
             );
 
             this.dashboardView.updateBluetoothMessage(
-                "SOS guardado en Firebase. Enviando Telegram..."
+                `${eventName} guardado en Firebase. Enviando Telegram...`
             );
 
-            /*
-             * PASO 3. ENVIAR TELEGRAM.
-             */
             if (!this.telegramService) {
 
                 this.dashboardView.updateBluetoothMessage(
-                    "SOS guardado en Firebase. " +
-                    "Telegram no está configurado."
+                    `${eventName} guardado en Firebase. Telegram no configurado.`
                 );
 
                 return;
             }
 
+            // Enviar aviso a Telegram.
             try {
 
-                const result =
-                    await this.telegramService.sendAlert(
-                        alertId
-                    );
+                const result = await this.telegramService.sendAlert(
+                    alertId
+                );
 
                 console.log(
-                    "Resultado de Telegram:",
+                    `${eventName} enviado a Telegram:`,
                     result
                 );
 
@@ -1209,14 +1235,14 @@ export class AppController {
                 ) {
 
                     this.dashboardView.updateBluetoothMessage(
-                        "SOS enviado a Firebase y Telegram"
+                        `${eventName} enviado a Firebase y Telegram`
                     );
                 }
 
             } catch (telegramError) {
 
                 console.error(
-                    "SOS registrado, pero Telegram falló:",
+                    `${eventName} registrado, pero Telegram falló:`,
                     telegramError
                 );
 
@@ -1226,9 +1252,7 @@ export class AppController {
                 ) {
 
                     this.dashboardView.updateBluetoothMessage(
-                        "SOS guardado en Firebase. " +
-                        "Error de Telegram: " +
-                        telegramError.message
+                        `${eventName} guardado en Firebase. Error de Telegram: ${telegramError.message}`
                     );
                 }
             }
@@ -1236,7 +1260,7 @@ export class AppController {
         } catch (error) {
 
             console.error(
-                "Error al procesar SOS:",
+                `Error procesando ${eventName}:`,
                 error
             );
 
@@ -1246,13 +1270,11 @@ export class AppController {
             ) {
 
                 this.dashboardView.updateBluetoothMessage(
-                    "No se pudo registrar SOS: " +
-                    error.message
+                    `No se pudo registrar ${eventName}: ${error.message}`
                 );
 
                 window.alert(
-                    "No se pudo registrar SOS en Firebase: " +
-                    error.message
+                    `No se pudo registrar ${eventName}: ${error.message}`
                 );
             }
 
@@ -1261,6 +1283,7 @@ export class AppController {
             this.sosProcessing = false;
         }
     }
+
 
 
     /*

@@ -1,3 +1,4 @@
+
 {
   "rules": {
     ".read": false,
@@ -7,7 +8,7 @@
       "baston01": {
 
         "status": {
-          ".read": "auth != null",
+          ".read": "auth != null && (auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33' || auth.uid === 'ErQQJUH79XT65flAqwP11o5lycv2')",
           ".write": "auth != null && auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33'",
           ".validate": "newData.hasChildren(['lat', 'lng', 'gpsFix', 'obstacleCm', 'fallDetected', 'lastSeen'])",
 
@@ -24,7 +25,7 @@
           },
 
           "obstacleCm": {
-            ".validate": "newData.val() === null || (newData.isNumber() && newData.val() >= 0)"
+            ".validate": "newData.isNumber() && newData.val() >= 0"
           },
 
           "fallDetected": {
@@ -37,10 +38,10 @@
         },
 
         "history": {
-          ".read": "auth != null",
+          ".read": "auth != null && (auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33' || auth.uid === 'ErQQJUH79XT65flAqwP11o5lycv2')",
 
           "$historyId": {
-            ".write": "auth != null && auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33' && !data.exists()",
+            ".write": "auth != null && auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33' && !data.exists() && newData.exists()",
             ".validate": "newData.hasChildren(['lat', 'lng', 'ts'])",
 
             "lat": {
@@ -60,11 +61,11 @@
         },
 
         "phoneLocation": {
-          ".read": "auth != null",
+          ".read": "auth != null && (auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33' || auth.uid === 'ErQQJUH79XT65flAqwP11o5lycv2')",
 
           "current": {
             ".write": "auth != null && auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33'",
-            ".validate": "newData.hasChildren(['lat', 'lng', 'accuracy', 'gpsFix', 'updatedAt'])",
+            ".validate": "newData.hasChildren(['lat', 'lng', 'gpsFix', 'updatedAt'])",
 
             "lat": {
               ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
@@ -84,13 +85,17 @@
 
             "updatedAt": {
               ".validate": "newData.isNumber()"
+            },
+
+            "$other": {
+              ".validate": false
             }
           },
 
           "history": {
             "$historyId": {
-              ".write": "auth != null && auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33' && !data.exists()",
-              ".validate": "newData.hasChildren(['lat', 'lng', 'accuracy', 'ts'])",
+              ".write": "auth != null && auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33' && !data.exists() && newData.exists()",
+              ".validate": "newData.hasChildren(['lat', 'lng', 'ts'])",
 
               "lat": {
                 ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
@@ -106,6 +111,10 @@
 
               "ts": {
                 ".validate": "newData.isNumber()"
+              },
+
+              "$other": {
+                ".validate": false
               }
             },
 
@@ -114,10 +123,10 @@
         },
 
         "alerts": {
-          ".read": "auth != null",
+          ".read": "auth != null && (auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33' || auth.uid === 'ErQQJUH79XT65flAqwP11o5lycv2')",
 
           "$alertId": {
-            ".write": "auth != null && ((auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33' && !data.exists()) || (auth.uid === 'ErQQJUH79XT65flAqwP11o5lycv2' && data.exists()))",
+            ".write": "auth != null && auth.uid === 'Kf0yMxgUzRTZ17Vq5M8jzQ1RqW33' && !data.exists() && newData.exists()",
             ".validate": "newData.hasChildren(['type', 'lat', 'lng', 'gpsFix', 'createdAt', 'attended'])",
 
             "type": {
@@ -141,11 +150,17 @@
             },
 
             "attended": {
+              ".write": "auth != null && auth.uid === 'ErQQJUH79XT65flAqwP11o5lycv2' && data.exists() && data.val() === false && newData.val() === true",
               ".validate": "newData.isBoolean()"
             },
 
             "attendedAt": {
-              ".validate": "newData.val() === null || newData.isNumber()"
+              ".write": "auth != null && auth.uid === 'ErQQJUH79XT65flAqwP11o5lycv2' && data.parent().exists() && data.parent().child('attended').val() === false && !data.exists() && newData.isNumber()",
+              ".validate": "newData.isNumber()"
+            },
+
+            "$other": {
+              ".validate": false
             }
           },
 

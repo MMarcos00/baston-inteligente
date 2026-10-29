@@ -1,29 +1,28 @@
 
-import {
-    Alert
-} from "../domain/entities.js";
-
-import {
-    ALERT_TYPES
-} from "../domain/constants.js";
-
+import { Alert } from "../domain/entities.js";
+import { ALERT_TYPES } from "../domain/constants.js";
 
 /*
  * ==========================================
- * BASTÓN INTELIGENTE MEJORADO
- * SERVICIO DE ALERTAS
+ * SMARTCANE - SERVICIO DE ALERTAS
  * ==========================================
  *
- * Funciones:
+ * Compatible con el firmware ESP32 actual:
  *
+ * - SOS: Necesito ayuda
+ * - ALERTA: Posible caida detectada
+ *
+ * Funciones:
  * 1. Consultar alertas de Firebase.
- * 2. Registrar alertas SOS y caídas.
+ * 2. Registrar emergencias SOS y caídas.
  * 3. Marcar alertas como atendidas.
  * 4. Notificar únicamente al cuidador.
  * 5. Evitar notificar alertas atendidas.
+ * 6. Registrar emergencias sin señal GPS.
  *
  * IMPORTANTE:
- * No modifica el envío por Telegram.
+ * El envío de Telegram permanece a cargo
+ * del AppController y TelegramService.
  */
 
 export class AlertService {
@@ -34,40 +33,25 @@ export class AlertService {
         soundService
     ) {
 
-        this.deviceRepository =
-            deviceRepository;
+        this.deviceRepository = deviceRepository;
 
-        this.notificationService =
-            notificationService;
+        this.notificationService = notificationService;
 
-        this.soundService =
-            soundService;
+        this.soundService = soundService;
 
-        /*
-         * Seguridad:
-         *
-         * Las notificaciones comienzan
-         * deshabilitadas.
-         *
-         * AppController únicamente las
-         * habilitará para el cuidador.
-         */
+        // Solo el cuidador recibe notificaciones.
         this.notificationsEnabled = false;
     }
-
 
     /*
      * ==========================================
      * CONFIGURAR NOTIFICACIONES
      * ==========================================
-     *
-     * true  = cuidador
-     * false = bastón o sin sesión
      */
+
     setNotificationsEnabled(enabled) {
 
-        this.notificationsEnabled =
-            enabled === true;
+        this.notificationsEnabled = enabled === true;
 
         console.log(
             "Notificaciones de emergencia:",
@@ -77,106 +61,76 @@ export class AlertService {
         );
     }
 
-
     /*
      * ==========================================
      * ESCUCHAR ALERTAS DE FIREBASE
      * ==========================================
      */
+
     subscribeToAlerts(callback, onError) {
 
         let initialized = false;
-
         let previousIds = new Set();
 
-        return this.deviceRepository
-            .subscribeToAlerts(
+        return this.deviceRepository.subscribeToAlerts(
 
-                (data) => {
+            (data) => {
 
-                    /*
-                     * Convertir los registros
-                     * a entidades Alert.
-                     */
-                    const alerts = data.map(
-                        (item) =>
-                            new Alert(item)
-                    );
+                const alerts = data.map(
+                    (item) => new Alert(item)
+                );
 
-                    /*
-                     * Obtener identificadores
-                     * de todas las alertas.
-                     */
-                    const currentIds = new Set(
-                        alerts.map(
-                            (alert) => alert.id
-                        )
-                    );
+                const currentIds = new Set(
+                    alerts.map((alert) => alert.id)
+                );
 
-                    /*
-                     * Evitar que al iniciar sesión
-                     * se notifiquen nuevamente
-                     * todas las alertas antiguas.
-                     */
-                    if (initialized) {
+                /*
+                 * Evitar notificar todas las alertas
+                 * antiguas al iniciar la sesión.
+                 */
+                if (initialized) {
 
-                        for (const alert of alerts) {
+                    for (const alert of alerts) {
 
-                            const isNew =
-                                !previousIds.has(alert.id);
+                        const isNew =
+                            !previousIds.has(alert.id);
 
-                            const isPending =
-                                alert.attended !== true;
+                        const isPending =
+                            alert.attended !== true;
 
-                            /*
-                             * Notificar solamente si:
-                             *
-                             * - Es una alerta nueva.
-                             * - No ha sido atendida.
-                             * - La sesión permite
-                             *   notificaciones.
-                             */
-                            if (
-                                isNew &&
-                                isPending &&
-                                this.notificationsEnabled
-                            ) {
+                        if (
+                            isNew &&
+                            isPending &&
+                            this.notificationsEnabled
+                        ) {
 
-                                this.notifyNewAlert(
-                                    alert
-                                );
-                            }
+                            this.notifyNewAlert(alert);
                         }
                     }
+                }
 
-                    previousIds = currentIds;
+                previousIds = currentIds;
+                initialized = true;
 
-                    initialized = true;
+                // Actualizar panel del bastón/cuidador.
+                callback(alerts);
+            },
 
-                    /*
-                     * Actualizar el panel tanto
-                     * del bastón como del cuidador.
-                     *
-                     * Esto no genera notificaciones.
-                     */
-                    callback(alerts);
-                },
-
-                onError
-            );
+            onError
+        );
     }
-
 
     /*
      * ==========================================
      * MARCAR ALERTA COMO ATENDIDA
      * ==========================================
      */
+
     async markAsAttended(alertId) {
 
         if (
             typeof alertId !== "string" ||
-            !alertId.trim()
+            !/^[A-Za-z0-9_-]{10,100}$/.test(alertId)
         ) {
 
             throw new Error(
@@ -184,89 +138,87 @@ export class AlertService {
             );
         }
 
-        /*
-         * La autorización definitiva
-         * también debe estar protegida
-         * por las reglas de Firebase.
-         */
+        // Firebase determina quién tiene permiso.
         await this.deviceRepository
-            .markAlertAsAttended(
-                alertId
-            );
+            .markAlertAsAttended(alertId);
     }
-
 
     /*
      * ==========================================
-     * CREAR ALERTA
+     * CREAR ALERTA SOS O CAÍDA
      * ==========================================
-     *
-     * Este método sigue funcionando
-     * para el SOS físico del ESP32.
      */
+
     async createAlert(type, location) {
 
-        if (
-            type !== ALERT_TYPES.FALL &&
-            type !== ALERT_TYPES.SOS
-        ) {
+        const validType =
+            type === ALERT_TYPES.FALL ||
+            type === ALERT_TYPES.SOS;
+
+        if (!validType) {
 
             throw new Error(
                 "Tipo de alerta no válido."
             );
         }
 
-        if (!location) {
+        /*
+         * Si no existe una ubicación GPS válida,
+         * guardar gpsFix=false.
+         *
+         * Se mantienen lat/lng numéricos para
+         * respetar las reglas actuales de Firebase.
+         */
+        const hasValidGPS = Boolean(
+            location &&
+            location.gpsFix === true &&
+            Number.isFinite(location.lat) &&
+            Number.isFinite(location.lng) &&
+            location.lat >= -90 &&
+            location.lat <= 90 &&
+            location.lng >= -180 &&
+            location.lng <= 180
+        );
 
-            throw new Error(
-                "La alerta necesita una ubicación válida."
-            );
-        }
+        const alertData = {
+            type,
+
+            lat: hasValidGPS
+                ? location.lat
+                : 0,
+
+            lng: hasValidGPS
+                ? location.lng
+                : 0,
+
+            gpsFix: hasValidGPS
+        };
 
         /*
-         * Conservar exactamente la
-         * estructura esperada por Firebase.
+         * No incluir aquí createdAt ni attended.
+         * FirebaseDeviceRepository se encarga
+         * de agregar esos campos.
          */
-        return this.deviceRepository
-            .createAlert({
-
-                type,
-
-                lat: location.lat,
-
-                lng: location.lng,
-
-                gpsFix: location.gpsFix
-            });
+        return this.deviceRepository.createAlert(
+            alertData
+        );
     }
-
 
     /*
      * ==========================================
-     * NOTIFICAR NUEVA ALERTA
+     * NOTIFICAR NUEVA EMERGENCIA
      * ==========================================
      *
-     * Únicamente el cuidador.
+     * Solo para la cuenta del cuidador.
      */
+
     notifyNewAlert(alert) {
 
-        /*
-         * Bloqueo principal.
-         *
-         * El usuario bastón no emitirá
-         * sonidos, vibraciones ni avisos
-         * de emergencia desde este servicio.
-         */
         if (!this.notificationsEnabled) {
-
             return;
         }
 
-        /*
-         * No notificar alertas atendidas.
-         */
-        if (alert.attended === true) {
-
+        if (!alert || alert.attended === true) {
             return;
         }
 
@@ -274,19 +226,21 @@ export class AlertService {
             alert.type === ALERT_TYPES.FALL;
 
         const title = isFall
-            ? "⚠️ Posible caída"
+            ? "⚠️ Posible caída detectada"
             : "🚨 Alerta SOS";
 
         const body = alert.isLocated()
-            ? "Se recibió una alerta con ubicación GPS."
-            : "Se recibió una alerta, pero el GPS no tiene señal.";
-
+            ? isFall
+                ? "El bastón detectó una posible caída. Se dispone de ubicación GPS."
+                : "Se activó el botón SOS. Se dispone de ubicación GPS."
+            : "Se recibió una emergencia, pero no hay ubicación GPS disponible.";
 
         /*
          * ======================================
          * NOTIFICACIÓN DEL NAVEGADOR
          * ======================================
          */
+
         if (
             this.notificationService &&
             typeof this.notificationService.notify ===
@@ -317,12 +271,12 @@ export class AlertService {
             }
         }
 
-
         /*
          * ======================================
          * SONIDO DE EMERGENCIA
          * ======================================
          */
+
         if (
             this.soundService &&
             typeof this.soundService.notify ===
@@ -350,12 +304,12 @@ export class AlertService {
             }
         }
 
-
         /*
          * ======================================
          * VIBRACIÓN DEL TELÉFONO
          * ======================================
          */
+
         if (
             typeof navigator !== "undefined" &&
             typeof navigator.vibrate === "function"
