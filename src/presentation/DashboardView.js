@@ -41,6 +41,15 @@ export class DashboardView {
         this.gpsWarning = get("gpsWarning");
         this.obstacleValue = get("obstacleValue");
         this.fallValue = get("fallValue");
+        // Ocultar tarjeta visual del sensor de obstáculos.
+        const obstacleCard = this.obstacleValue?.closest(
+            ".sc-card"
+        );
+
+        if (obstacleCard && obstacleCard !== this.screen) {
+            obstacleCard.hidden = true;
+            obstacleCard.style.display = "none";
+        }
         this.fallCard = get("fallCard");
         this.coordinatesText = get("coordinatesText");
 

@@ -1,9 +1,26 @@
+
+/*
+ * ==========================================
+ * SMARTCANE - LEAFLET MAP ADAPTER
+ * ==========================================
+ *
+ * Visualización de:
+ *
+ * - Ubicación GPS del teléfono.
+ * - Última posición válida.
+ * - Trayectoria del bastón.
+ * - Centrado automático del mapa.
+ *
+ * Compatible con AppController.js.
+ *
+ * No requiere modificaciones del ESP32.
+ */
+
 export class LeafletMapAdapter {
 
     constructor(containerId) {
 
-        this.containerId =
-            containerId;
+        this.containerId = containerId;
 
         this.map = null;
 
@@ -13,8 +30,16 @@ export class LeafletMapAdapter {
 
         this.lastLocation = null;
 
+        this.lastLocationAt = 0;
+
+        this.hasCentered = false;
     }
 
+    /*
+     * ==========================================
+     * INICIALIZAR MAPA
+     * ==========================================
+     */
 
     initialize() {
 
@@ -22,8 +47,7 @@ export class LeafletMapAdapter {
             return;
         }
 
-        this.map =
-            L.map(this.containerId);
+        this.map = L.map(this.containerId);
 
         L.tileLayer(
             "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -35,23 +59,47 @@ export class LeafletMapAdapter {
             }
         ).addTo(this.map);
 
-
+        /*
+         * Vista inicial de referencia.
+         * No representa la posición real
+         * del bastón.
+         */
         this.map.setView(
             [14.6349, -90.5069],
             6
         );
 
-
-        this.polyline =
-            L.polyline(
-                [],
-                {
-                    weight: 5
-                }
-            ).addTo(this.map);
-
+        this.polyline = L.polyline(
+            [],
+            {
+                weight: 5
+            }
+        ).addTo(this.map);
     }
 
+    /*
+     * ==========================================
+     * VALIDAR COORDENADAS
+     * ==========================================
+     */
+
+    isValidCoordinates(lat, lng) {
+
+        return (
+            Number.isFinite(lat) &&
+            Number.isFinite(lng) &&
+            lat >= -90 &&
+            lat <= 90 &&
+            lng >= -180 &&
+            lng <= 180
+        );
+    }
+
+    /*
+     * ==========================================
+     * ACTUALIZAR UBICACIÓN
+     * ==========================================
+     */
 
     updateLocation(
         lat,
@@ -59,59 +107,73 @@ export class LeafletMapAdapter {
         centerAutomatically = true
     ) {
 
+        if (!this.isValidCoordinates(lat, lng)) {
+
+            console.warn(
+                "Coordenadas inválidas para el mapa:",
+                lat,
+                lng
+            );
+
+            return;
+        }
+
         if (!this.map) {
             this.initialize();
         }
 
-        if (
-            !Number.isFinite(lat) ||
-            !Number.isFinite(lng)
-        ) {
+        const position = [lat, lng];
 
-            return;
+        this.lastLocation = position;
 
-        }
+        this.lastLocationAt = Date.now();
 
-
-        const position =
-            [lat, lng];
-
-        this.lastLocation =
-            position;
-
+        /*
+         * Crear o mover marcador.
+         */
 
         if (!this.marker) {
 
-            this.marker =
-                L.marker(position)
-                    .addTo(this.map)
-                    .bindPopup(
-                        "Bastón Inteligente"
-                    );
+            this.marker = L.marker(position)
+                .addTo(this.map)
+                .bindPopup(
+                    "📍 Última ubicación registrada de SmartCane"
+                );
 
         } else {
 
-            this.marker
-                .setLatLng(position);
-
+            this.marker.setLatLng(position);
         }
 
+        /*
+         * Centrar automáticamente.
+         */
 
         if (centerAutomatically) {
 
-            this.map
-                .setView(
-                    position,
-                    17,
-                    {
-                        animate: true
-                    }
-                );
+            this.map.setView(
+                position,
+                17,
+                {
+                    animate: true
+                }
+            );
 
+            this.hasCentered = true;
         }
 
+        console.log(
+            "Ubicación actualizada en el mapa:",
+            lat,
+            lng
+        );
     }
 
+    /*
+     * ==========================================
+     * ACTUALIZAR TRAYECTORIA
+     * ==========================================
+     */
 
     updateTrajectory(points) {
 
@@ -119,58 +181,82 @@ export class LeafletMapAdapter {
             this.initialize();
         }
 
-        const coordinates =
-            points
-                .filter(
-                    (point) =>
-                        Number.isFinite(point.lat) &&
-                        Number.isFinite(point.lng)
-                )
-                .map(
-                    (point) =>
-                        [
-                            point.lat,
-                            point.lng
-                        ]
-                );
+        const records = Array.isArray(points)
+            ? points
+            : [];
 
-        this.polyline
-            .setLatLngs(
-                coordinates
+        const coordinates = records
+            .filter(
+                (point) =>
+                    this.isValidCoordinates(
+                        point.lat,
+                        point.lng
+                    )
+            )
+            .map(
+                (point) => [
+                    point.lat,
+                    point.lng
+                ]
             );
 
+        this.polyline.setLatLngs(
+            coordinates
+        );
+
+        /*
+         * El historial no se utiliza
+         * para inventar una ubicación
+         * GPS actual.
+         */
     }
 
+    /*
+     * ==========================================
+     * CENTRAR ÚLTIMA UBICACIÓN
+     * ==========================================
+     */
 
     centerOnLastLocation() {
 
-        if (
-            !this.map ||
-            !this.lastLocation
-        ) {
-
-            return;
-
+        if (!this.map) {
+            this.initialize();
         }
 
-        this.map
-            .setView(
-                this.lastLocation,
-                17,
-                {
-                    animate: true
-                }
+        if (!this.lastLocation) {
+
+            console.warn(
+                "Todavía no existe una ubicación GPS registrada para centrar el mapa."
             );
 
+            return;
+        }
+
+        this.map.invalidateSize();
+
+        this.map.setView(
+            this.lastLocation,
+            17,
+            {
+                animate: true
+            }
+        );
+
+        if (this.marker) {
+            this.marker.openPopup();
+        }
     }
 
+    /*
+     * ==========================================
+     * RECALCULAR TAMAÑO
+     * ==========================================
+     */
 
     invalidateSize() {
 
         if (this.map) {
             this.map.invalidateSize();
         }
-
     }
-
 }

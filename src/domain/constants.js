@@ -1,3 +1,4 @@
+
 export const DEVICE_ID = "baston01";
 
 export const DEVICE_ONLINE_THRESHOLD_MS = 30_000;
